@@ -1,5 +1,5 @@
-import { Canvas } from '@react-three/fiber'
-import { OrbitControls, useGLTF, useAnimations } from '@react-three/drei'
+import { Canvas, useThree, useFrame } from '@react-three/fiber'
+import { useGLTF, useAnimations, PerspectiveCamera } from '@react-three/drei'
 import { useEffect, useState, useRef } from 'react'
 import * as THREE from 'three'
 
@@ -8,16 +8,23 @@ function Stadium() {
   return <primitive object={scene} scale={4} position={[0, 0, 0]} />
 }
 
-function Character() {
-  // State for movement
-  const [isMoving, setIsMoving] = useState(false)
-  const [position, setPosition] = useState(new THREE.Vector3(0, 0, 0))
-  const [rotation, setRotation] = useState(0)
-  const rotationRef = useRef(0)
+function Character({ onPositionChange }: { onPositionChange: (position: THREE.Vector3) => void }) {
+  const { camera } = useThree()
+  const characterRef = useRef<THREE.Group>(null)
+  const position = useRef(new THREE.Vector3(0, 0, 0))
+  const keysPressed = useRef<Set<string>>(new Set())
+  const isMoving = useRef(false)
+  const isPointerLocked = useRef(false)
+  const mouseSensitivity = 0.002
+  const yaw = useRef(0)
+  const pitch = useRef(Math.PI / 2) // Start looking straight ahead
   
   // Movement constants
-  const MOVEMENT_SPEED = 0.02
-  const ROTATION_SPEED = 0.05
+  const MOVEMENT_SPEED = 0.1
+  
+  // Camera constants
+  const CAMERA_DISTANCE = 5 // Distance behind the character
+  const CAMERA_HEIGHT = 3 // Height above the character
   
   // Load the character model
   const { scene } = useGLTF('/src/assets/models/character/XBot.glb')
@@ -27,135 +34,160 @@ function Character() {
   const { animations: walkAnimations } = useGLTF('/src/assets/models/character/animations/Walking.glb')
   
   // Create animation mixer
-  const mixer = useRef<THREE.AnimationMixer>()
-  const idleAction = useRef<THREE.AnimationAction>()
-  const walkAction = useRef<THREE.AnimationAction>()
-  
-  // Movement state
-  const keysPressed = useRef<Set<string>>(new Set())
+  const mixer = useRef<THREE.AnimationMixer>(new THREE.AnimationMixer(scene))
+  const idleAction = useRef<THREE.AnimationAction>(mixer.current.clipAction(idleAnimations[0]))
+  const walkAction = useRef<THREE.AnimationAction>(mixer.current.clipAction(walkAnimations[0]))
   
   // Set up animations
   useEffect(() => {
     if (!scene || !idleAnimations[0] || !walkAnimations[0]) return
     
-    // Create mixer
-    mixer.current = new THREE.AnimationMixer(scene)
-    
-    // Create actions
-    idleAction.current = mixer.current.clipAction(idleAnimations[0])
-    walkAction.current = mixer.current.clipAction(walkAnimations[0])
-    
     // Set up initial state
     idleAction.current.play()
-    
-    console.log('Animations set up:', {
-      idle: idleAction.current?.getClip().name,
-      walk: walkAction.current?.getClip().name
-    })
   }, [scene, idleAnimations, walkAnimations])
-  
-  // Handle animation switching
-  useEffect(() => {
-    if (!idleAction.current || !walkAction.current) return
-    
-    if (isMoving) {
-      idleAction.current.fadeOut(0.2)
-      walkAction.current.reset().fadeIn(0.2).play()
-    } else {
-      walkAction.current.fadeOut(0.2)
-      idleAction.current.reset().fadeIn(0.2).play()
-    }
-  }, [isMoving])
-  
-  // Update animation mixer and position
-  useEffect(() => {
-    if (!mixer.current) return
-    
-    const updateMixer = () => {
-      // Update animation
-      mixer.current?.update(0.016)
-      
-      // Handle rotation (A and D keys)
-      if (keysPressed.current.has('a')) {
-        rotationRef.current += ROTATION_SPEED
-        setRotation(rotationRef.current)
-      }
-      if (keysPressed.current.has('d')) {
-        rotationRef.current -= ROTATION_SPEED
-        setRotation(rotationRef.current)
-      }
-      
-      // Handle forward movement (W key)
-      if (keysPressed.current.has('w')) {
-        setPosition(prev => {
-          const newPos = prev.clone()
-          // Calculate forward direction based on current rotation
-          newPos.x += Math.sin(rotationRef.current) * MOVEMENT_SPEED
-          newPos.z += Math.cos(rotationRef.current) * MOVEMENT_SPEED
-          return newPos
-        })
-      }
-      
-      requestAnimationFrame(updateMixer)
-    }
-    
-    updateMixer()
-  }, [])
   
   // Handle keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase()
-      if (['w', 'a', 'd'].includes(key)) {
-        keysPressed.current.add(key)
-        // Only set isMoving to true if W is pressed
-        if (key === 'w') {
-          setIsMoving(true)
-        }
-      }
+      keysPressed.current.add(e.key.toLowerCase())
     }
     
     const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase()
-      if (['w', 'a', 'd'].includes(key)) {
-        keysPressed.current.delete(key)
-        // Only set isMoving to false if W is released
-        if (key === 'w') {
-          setIsMoving(false)
-        }
+      keysPressed.current.delete(e.key.toLowerCase())
+    }
+    
+    // Handle pointer lock for mouse control
+    const handlePointerLockChange = () => {
+      isPointerLocked.current = document.pointerLockElement !== null
+    }
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isPointerLocked.current) return
+      
+      // Update yaw and pitch based on mouse movement
+      yaw.current -= e.movementX * mouseSensitivity
+      pitch.current = Math.max(0.1, Math.min(Math.PI - 0.1, pitch.current + e.movementY * mouseSensitivity))
+    }
+    
+    // Request pointer lock on click
+    const handleClick = () => {
+      if (!isPointerLocked.current) {
+        document.body.requestPointerLock()
       }
     }
     
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('click', handleClick)
+    document.addEventListener('pointerlockchange', handlePointerLockChange)
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('click', handleClick)
+      document.removeEventListener('pointerlockchange', handlePointerLockChange)
     }
   }, [])
+  
+  // Update animation mixer and handle movement
+  useFrame((_, delta) => {
+    if (mixer.current) {
+      mixer.current.update(delta)
+    }
+
+    // Handle movement
+    const moveForward = keysPressed.current.has('w')
+    const moveBackward = keysPressed.current.has('s')
+    const moveLeft = keysPressed.current.has('a')
+    const moveRight = keysPressed.current.has('d')
+
+    if (moveForward || moveBackward || moveLeft || moveRight) {
+      if (!isMoving.current) {
+        isMoving.current = true
+        idleAction.current.fadeOut(0.2)
+        walkAction.current.reset().fadeIn(0.2).play()
+      }
+
+      // Calculate movement direction based on camera yaw
+      const moveX = Math.sin(yaw.current)
+      const moveZ = Math.cos(yaw.current)
+
+      // Apply movement
+      if (moveForward) {
+        position.current.x -= moveX * MOVEMENT_SPEED
+        position.current.z -= moveZ * MOVEMENT_SPEED
+      }
+      if (moveBackward) {
+        position.current.x += moveX * MOVEMENT_SPEED
+        position.current.z += moveZ * MOVEMENT_SPEED
+      }
+      if (moveLeft) {
+        position.current.x -= moveZ * MOVEMENT_SPEED
+        position.current.z += moveX * MOVEMENT_SPEED
+      }
+      if (moveRight) {
+        position.current.x += moveZ * MOVEMENT_SPEED
+        position.current.z -= moveX * MOVEMENT_SPEED
+      }
+
+      // Update character position
+      if (characterRef.current) {
+        characterRef.current.position.copy(position.current)
+      }
+    } else if (isMoving.current) {
+      isMoving.current = false
+      walkAction.current.fadeOut(0.2)
+      idleAction.current.reset().fadeIn(0.2).play()
+    }
+    
+    // Update character rotation to match camera yaw
+    if (characterRef.current) {
+      characterRef.current.rotation.y = yaw.current + Math.PI
+    }
+    
+    // Update camera position and rotation
+    camera.position.copy(position.current)
+    camera.position.y += CAMERA_HEIGHT // Camera height above character
+    
+    // Calculate camera offset based on yaw
+    const cameraOffsetX = Math.sin(yaw.current) * CAMERA_DISTANCE
+    const cameraOffsetZ = Math.cos(yaw.current) * CAMERA_DISTANCE
+    
+    // Apply camera offset
+    camera.position.x += cameraOffsetX
+    camera.position.z += cameraOffsetZ
+    
+    // Calculate vertical offset based on pitch
+    const verticalOffset = Math.sin(pitch.current - Math.PI / 2) * CAMERA_DISTANCE
+    camera.position.y += verticalOffset
+    
+    // Make camera look at character position
+    const lookAtPosition = new THREE.Vector3(
+      position.current.x,
+      position.current.y + 1.5, // Look at character's head
+      position.current.z
+    )
+    camera.lookAt(lookAtPosition)
+  })
 
   return (
-    <primitive 
-      object={scene} 
-      scale={1} 
-      position={position}
-      rotation={[0, rotation, 0]}
-    />
+    <group position={[0, 0, 0]}>
+      <group ref={characterRef}>
+        <primitive 
+          object={scene} 
+          scale={1} 
+        />
+      </group>
+    </group>
   )
 }
 
 function App() {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <Canvas
-        camera={{
-          position: [10, 10, 10],
-          fov: 75,
-          near: 0.1,
-          far: 1000
-        }}
-      >
+      <Canvas>
         {/* Ambient light for general illumination */}
         <ambientLight intensity={0.9} />
         
@@ -170,8 +202,7 @@ function App() {
         <pointLight position={[10, 10, 10]} intensity={0.5} />
         
         <Stadium />
-        <Character />
-        <OrbitControls />
+        <Character onPositionChange={() => {}} />
       </Canvas>
     </div>
   )
