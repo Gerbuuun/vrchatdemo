@@ -2,7 +2,7 @@ import { useState } from 'react';
 import * as moduleBindings from '../module_bindings/index';
 
 interface ConnectionPopupProps {
-  onConnect: (connection: moduleBindings.DbConnection) => void;
+  onConnect: (connection: moduleBindings.DbConnection, identity: string) => void;
 }
 
 export function ConnectionPopup({ onConnect }: ConnectionPopupProps) {
@@ -18,9 +18,8 @@ export function ConnectionPopup({ onConnect }: ConnectionPopupProps) {
       const connection = await moduleBindings.DbConnection.builder()
         .withUri("http://localhost:3000")
         .withModuleName("vrchatdemo")
-        .onConnect((ctx, identity, token) => {
-          console.log("Connected with identity:", identity);
-          onConnect(ctx);
+        .onConnect((ctx, identity) => {
+          onConnect(ctx, identity.toHexString());
         })
         .onConnectError((ctx, error) => {
           console.error("Connection error:", error);
@@ -45,7 +44,8 @@ export function ConnectionPopup({ onConnect }: ConnectionPopupProps) {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      justifyContent: 'center'
+      justifyContent: 'center',
+      zIndex: 1000,
     }}>
       <h1 style={{
         fontSize: '3.5rem',

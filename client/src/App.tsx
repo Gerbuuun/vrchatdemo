@@ -3,14 +3,19 @@ import { useGLTF, useAnimations, PerspectiveCamera } from '@react-three/drei'
 import { useEffect, useState, useRef } from 'react'
 import * as THREE from 'three'
 import { ConnectionPopup } from './components/ConnectionPopup'
+import { OtherPlayer } from './components/OtherPlayer'
 import * as moduleBindings from './module_bindings/index'
 
 function Stadium() {
-  const { scene } = useGLTF('/src/assets/models/low_poly_stadium/scene.gltf')
+  const { scene } = useGLTF('/models/low_poly_stadium/scene.gltf')
   return <primitive object={scene} scale={4} position={[0, 0, 0]} />
 }
 
-function Character({ onPositionChange, isConnected }: { onPositionChange: (position: THREE.Vector3) => void, isConnected: boolean }) {
+function Character({ onPositionChange, isConnected, connection }: { 
+  onPositionChange: (position: THREE.Vector3) => void, 
+  isConnected: boolean,
+  connection: moduleBindings.DbConnection | null 
+}) {
   const { camera } = useThree()
   const characterRef = useRef<THREE.Group>(null)
   const position = useRef(new THREE.Vector3(0, 0, 0))
@@ -20,6 +25,11 @@ function Character({ onPositionChange, isConnected }: { onPositionChange: (posit
   const mouseSensitivity = 0.002
   const yaw = useRef(0)
   const pitch = useRef(Math.PI / 2) // Start looking straight ahead
+  const lastUpdateTime = useRef(0)
+  const UPDATE_INTERVAL = 1000 / 30 // 30 times per second
+  const lastSentPosition = useRef({ x: 0, y: 0, rotation: 0 })
+  const POSITION_THRESHOLD = 0.01 // Minimum change in position to trigger an update
+  const ROTATION_THRESHOLD = 0.01 // Minimum change in rotation to trigger an update
   
   // Movement constants
   const MOVEMENT_SPEED = 0.1
@@ -28,12 +38,18 @@ function Character({ onPositionChange, isConnected }: { onPositionChange: (posit
   const CAMERA_DISTANCE = 5 // Distance behind the character
   const CAMERA_HEIGHT = 3 // Height above the character
   
+  // Preload all models and animations
+  useGLTF.preload('/models/character/XBot.glb')
+  useGLTF.preload('/models/character/animations/Idle.glb')
+  useGLTF.preload('/models/character/animations/Walking.glb')
+  useGLTF.preload('/models/low_poly_stadium/scene.gltf')
+  
   // Load the character model
-  const { scene } = useGLTF('/src/assets/models/character/XBot.glb')
+  const { scene } = useGLTF('/models/character/XBot.glb')
   
   // Load animations separately
-  const { animations: idleAnimations } = useGLTF('/src/assets/models/character/animations/Idle.glb')
-  const { animations: walkAnimations } = useGLTF('/src/assets/models/character/animations/Walking.glb')
+  const { animations: idleAnimations } = useGLTF('/models/character/animations/Idle.glb')
+  const { animations: walkAnimations } = useGLTF('/models/character/animations/Walking.glb')
   
   // Create animation mixer
   const mixer = useRef<THREE.AnimationMixer>(new THREE.AnimationMixer(scene))
@@ -176,6 +192,36 @@ function Character({ onPositionChange, isConnected }: { onPositionChange: (posit
       position.current.z
     )
     camera.lookAt(lookAtPosition)
+
+    // Update server with position and rotation if enough time has passed and position has changed
+    const currentTime = performance.now()
+    const currentRotation = yaw.current + Math.PI
+    
+    // Check if position or rotation has changed significantly
+    const positionChanged = 
+      Math.abs(position.current.x - lastSentPosition.current.x) > POSITION_THRESHOLD ||
+      Math.abs(position.current.z - lastSentPosition.current.y) > POSITION_THRESHOLD;
+    
+    const rotationChanged = 
+      Math.abs(currentRotation - lastSentPosition.current.rotation) > ROTATION_THRESHOLD;
+    
+    if (currentTime - lastUpdateTime.current >= UPDATE_INTERVAL && (positionChanged || rotationChanged)) {
+      lastUpdateTime.current = currentTime;
+      if (connection) {
+        connection.reducers.updatePlayerPosition(
+          { x: position.current.x, y: position.current.z }, // DbVector2 for position
+          currentRotation // rotation as number
+        )
+        console.log("Updated player position to ", position.current, currentRotation);
+        
+        // Update last sent position
+        lastSentPosition.current = {
+          x: position.current.x,
+          y: position.current.z,
+          rotation: currentRotation
+        };
+      }
+    }
   })
 
   return (
@@ -192,10 +238,143 @@ function Character({ onPositionChange, isConnected }: { onPositionChange: (posit
 
 function App() {
   const [connection, setConnection] = useState<moduleBindings.DbConnection | null>(null);
+  const [otherPlayers, setOtherPlayers] = useState<Map<string, moduleBindings.Player>>(new Map());
+  const [localIdentity, setLocalIdentity] = useState<string | null>(null);
+
+  // Helper function to get player identity string
+  const getPlayerIdentityString = (player: moduleBindings.Player): string => {
+    return player.identity.toHexString();
+  };
+
+  // Set up subscription when connection is established
+  useEffect(() => {
+    if (connection) {
+      console.log("Setting up subscription with local identity:", localIdentity);
+      
+      // Subscribe to all tables
+      connection.subscriptionBuilder()
+        .onApplied((ctx: moduleBindings.SubscriptionEventContext) => {
+          console.log("Subscription applied, tables available:", ctx.db);
+          // Initialize other players from existing data
+          const players = new Map<string, moduleBindings.Player>();
+          let playerCount = 0;
+          for (const player of ctx.db.player.iter()) {
+            playerCount++;
+            const playerIdentity = getPlayerIdentityString(player);
+            console.log("Found player:", playerIdentity, "position:", player.position);
+            
+            // Only add player if we have a local identity and this isn't the local player
+            if (localIdentity && playerIdentity === localIdentity) {
+              console.log("Skipped local player:", playerIdentity);
+              continue;
+            }
+            else
+            {
+              console.log(`${playerIdentity} does not match local identity ${localIdentity}. Must be other player.`);
+            }
+            
+            players.set(playerIdentity, player);
+            console.log("Added other player:", playerIdentity);
+          }
+          console.log(`Total players found: ${playerCount}, other players: ${players.size}`);
+          setOtherPlayers(players);
+        })
+        .onError((ctx: moduleBindings.ErrorContext) => {
+          console.error("Subscription error:", ctx.event);
+        })
+        .subscribeToAllTables();
+
+      // Set up callbacks for player table changes
+      const onInsertCallback = (ctx: moduleBindings.EventContext, player: moduleBindings.Player) => {
+        const playerIdentity = getPlayerIdentityString(player);
+        console.log("New player joined:", playerIdentity, "position:", player.position);
+        console.log("Event type:", ctx.event.tag);
+        
+        // Only filter out local player if we have a local identity
+        if (!localIdentity || playerIdentity !== localIdentity) {
+          console.log("Adding new other player:", playerIdentity);
+          setOtherPlayers(prev => {
+            const next = new Map(prev);
+            next.set(playerIdentity, player);
+            console.log("Other players count after insert:", next.size);
+            return next;
+          });
+        } else {
+          console.log("Skipped local player insert:", playerIdentity);
+        }
+      };
+
+      const onDeleteCallback = (ctx: moduleBindings.EventContext, player: moduleBindings.Player) => {
+        const playerIdentity = getPlayerIdentityString(player);
+        console.log("Player left:", playerIdentity);
+        console.log("Event type:", ctx.event.tag);
+        setOtherPlayers(prev => {
+          const next = new Map(prev);
+          next.delete(playerIdentity);
+          console.log("Other players count after delete:", next.size);
+          return next;
+        });
+      };
+
+      const onUpdateCallback = (ctx: moduleBindings.EventContext, oldPlayer: moduleBindings.Player, newPlayer: moduleBindings.Player) => {
+        const playerIdentity = getPlayerIdentityString(newPlayer);
+        console.log("Player updated:", playerIdentity, "position:", newPlayer.position);
+        console.log("Event type:", ctx.event.tag);
+        
+        // Only filter out local player if we have a local identity
+        if (!localIdentity || playerIdentity !== localIdentity) {
+          console.log("Updating other player:", playerIdentity);
+          setOtherPlayers(prev => {
+            const next = new Map(prev);
+            next.set(playerIdentity, newPlayer);
+            return next;
+          });
+        } else {
+          console.log("Skipped local player update:", playerIdentity);
+        }
+      };
+
+      // Register callbacks
+      connection.db.player.onInsert(onInsertCallback);
+      connection.db.player.onDelete(onDeleteCallback);
+      connection.db.player.onUpdate(onUpdateCallback);
+
+      // Cleanup function
+      return () => {
+        console.log("Cleaning up callbacks");
+        connection.db.player.removeOnInsert(onInsertCallback);
+        connection.db.player.removeOnDelete(onDeleteCallback);
+        connection.db.player.removeOnUpdate(onUpdateCallback);
+      };
+    }
+  }, [connection, localIdentity]);
+
+  const handleConnect = (newConnection: moduleBindings.DbConnection, identity: string) => {
+    console.log("Connecting with identity:", identity);
+    setConnection(newConnection);
+    setLocalIdentity(identity);
+  };
+
+  // Debug log for rendering
+  console.log("Rendering with other players count:", otherPlayers.size);
+  console.log("Other players:", Array.from(otherPlayers.values()).map(p => ({
+    identity: getPlayerIdentityString(p),
+    position: p.position,
+    rotation: p.rotationYaw
+  })));
 
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <Canvas>
+        {/* Fixed camera for testing */}
+        <PerspectiveCamera
+          makeDefault
+          position={[0, 10, 10]}
+          fov={75}
+          near={0.1}
+          far={1000}
+        />
+        
         {/* Ambient light for general illumination */}
         <ambientLight intensity={0.9} />
         
@@ -210,9 +389,18 @@ function App() {
         <pointLight position={[10, 10, 10]} intensity={0.5} />
         
         <Stadium />
-        <Character onPositionChange={() => {}} isConnected={!!connection} />
+        <Character onPositionChange={() => {}} isConnected={!!connection} connection={connection} />
+        
+        {/* Render other players */}
+        {Array.from(otherPlayers.values()).map(player => {
+          const playerIdentity = getPlayerIdentityString(player);
+          console.log("Rendering other player:", playerIdentity, "at position:", player.position);
+          return (
+            <OtherPlayer key={playerIdentity} player={player} />
+          );
+        })}
       </Canvas>
-      {!connection && <ConnectionPopup onConnect={setConnection} />}
+      {!connection && <ConnectionPopup onConnect={handleConnect} />}
     </div>
   );
 }
