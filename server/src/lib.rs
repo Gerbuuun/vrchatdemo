@@ -50,7 +50,7 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
         .find(&ctx.sender)
         .ok_or("Player not found")?;
 
-    let player_id = player.player_id;
+    //let player_id = player.player_id;
     ctx.db.logged_out_player().insert(player);
     ctx.db.player().identity().delete(&ctx.sender);
 

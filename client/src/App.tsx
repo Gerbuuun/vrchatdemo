@@ -2,13 +2,15 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { useGLTF, useAnimations, PerspectiveCamera } from '@react-three/drei'
 import { useEffect, useState, useRef } from 'react'
 import * as THREE from 'three'
+import { ConnectionPopup } from './components/ConnectionPopup'
+import * as moduleBindings from './module_bindings/index'
 
 function Stadium() {
   const { scene } = useGLTF('/src/assets/models/low_poly_stadium/scene.gltf')
   return <primitive object={scene} scale={4} position={[0, 0, 0]} />
 }
 
-function Character({ onPositionChange }: { onPositionChange: (position: THREE.Vector3) => void }) {
+function Character({ onPositionChange, isConnected }: { onPositionChange: (position: THREE.Vector3) => void, isConnected: boolean }) {
   const { camera } = useThree()
   const characterRef = useRef<THREE.Group>(null)
   const position = useRef(new THREE.Vector3(0, 0, 0))
@@ -48,6 +50,8 @@ function Character({ onPositionChange }: { onPositionChange: (position: THREE.Ve
   
   // Handle keyboard input
   useEffect(() => {
+    if (!isConnected) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       keysPressed.current.add(e.key.toLowerCase())
     }
@@ -89,13 +93,15 @@ function Character({ onPositionChange }: { onPositionChange: (position: THREE.Ve
       window.removeEventListener('click', handleClick)
       document.removeEventListener('pointerlockchange', handlePointerLockChange)
     }
-  }, [])
+  }, [isConnected])
   
   // Update animation mixer and handle movement
   useFrame((_, delta) => {
     if (mixer.current) {
       mixer.current.update(delta)
     }
+
+    if (!isConnected) return;
 
     // Handle movement
     const moveForward = keysPressed.current.has('w')
@@ -185,6 +191,8 @@ function Character({ onPositionChange }: { onPositionChange: (position: THREE.Ve
 }
 
 function App() {
+  const [connection, setConnection] = useState<moduleBindings.DbConnection | null>(null);
+
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <Canvas>
@@ -202,10 +210,11 @@ function App() {
         <pointLight position={[10, 10, 10]} intensity={0.5} />
         
         <Stadium />
-        <Character onPositionChange={() => {}} />
+        <Character onPositionChange={() => {}} isConnected={!!connection} />
       </Canvas>
+      {!connection && <ConnectionPopup onConnect={setConnection} />}
     </div>
-  )
+  );
 }
 
 export default App
