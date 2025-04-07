@@ -32,11 +32,11 @@ function Character({ onPositionChange, isConnected, connection }: {
   const ROTATION_THRESHOLD = 0.01 // Minimum change in rotation to trigger an update
   
   // Movement constants
-  const MOVEMENT_SPEED = 0.1
+  const MOVEMENT_SPEED = 0.03
   
   // Camera constants
-  const CAMERA_DISTANCE = 5 // Distance behind the character
-  const CAMERA_HEIGHT = 3 // Height above the character
+  const CAMERA_DISTANCE = 2 // Distance behind the character
+  const CAMERA_HEIGHT = 1 // Height above the character
   
   // Preload all models and animations
   useGLTF.preload('/models/character/XBot.glb')
@@ -56,12 +56,41 @@ function Character({ onPositionChange, isConnected, connection }: {
   const idleAction = useRef<THREE.AnimationAction>(mixer.current.clipAction(idleAnimations[0]))
   const walkAction = useRef<THREE.AnimationAction>(mixer.current.clipAction(walkAnimations[0]))
   
+  // Track the current animation state
+  const currentAnimation = useRef('idle')
+  
+  // Track the previous position for local movement calculation
+  const prevPosition = useRef(new THREE.Vector3(0, 0, 0))
+  
+  // Track if player is moving backwards
+  const isMovingBackwards = useRef(false)
+  
+  // Normalize angle to be between 0 and 2π - same as in OtherPlayer.tsx
+  function normalizeAngle(angle: number): number {
+    return ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  }
+  
   // Set up animations
   useEffect(() => {
     if (!scene || !idleAnimations[0] || !walkAnimations[0]) return
     
+    // Configure animations for smooth looping
+    walkAction.current.setLoop(THREE.LoopRepeat, Infinity)
+    idleAction.current.setLoop(THREE.LoopRepeat, Infinity)
+    
+    // Ensure animations are properly reset
+    walkAction.current.reset()
+    idleAction.current.reset()
+    
     // Set up initial state
-    idleAction.current.play()
+    idleAction.current.fadeIn(0.5).play()
+    currentAnimation.current = 'idle'
+    
+    // Cleanup function
+    return () => {
+      // Stop all animations when component unmounts
+      mixer.current.stopAllAction()
+    }
   }, [scene, idleAnimations, walkAnimations])
   
   // Handle keyboard input
@@ -119,22 +148,22 @@ function Character({ onPositionChange, isConnected, connection }: {
 
     if (!isConnected) return;
 
+    // Store previous position for movement calculation
+    const oldPosition = prevPosition.current.clone()
+
     // Handle movement
     const moveForward = keysPressed.current.has('w')
     const moveBackward = keysPressed.current.has('s')
     const moveLeft = keysPressed.current.has('a')
     const moveRight = keysPressed.current.has('d')
 
-    if (moveForward || moveBackward || moveLeft || moveRight) {
-      if (!isMoving.current) {
-        isMoving.current = true
-        idleAction.current.fadeOut(0.2)
-        walkAction.current.reset().fadeIn(0.2).play()
-      }
+    let moveX = 0;
+    let moveZ = 0;
 
+    if (moveForward || moveBackward || moveLeft || moveRight) {
       // Calculate movement direction based on camera yaw
-      const moveX = Math.sin(yaw.current)
-      const moveZ = Math.cos(yaw.current)
+      moveX = Math.sin(yaw.current)
+      moveZ = Math.cos(yaw.current)
 
       // Apply movement
       if (moveForward) {
@@ -158,10 +187,78 @@ function Character({ onPositionChange, isConnected, connection }: {
       if (characterRef.current) {
         characterRef.current.position.copy(position.current)
       }
+      
+      // Calculate world movement since last frame
+      const worldMovement = position.current.clone().sub(oldPosition)
+      const movementDistance = worldMovement.length()
+      
+      // Only process significant movement
+      if (movementDistance > 0.001) {
+        // Normalize the rotation angle
+        const normalizedRotation = normalizeAngle(yaw.current + Math.PI)
+        
+        // Create a rotation quaternion based on the character's yaw
+        const rotationQuaternion = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0), // Y-axis
+          normalizedRotation
+        )
+        
+        // Create rotation matrix from quaternion
+        const rotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(rotationQuaternion)
+        
+        // Get the inverse rotation matrix
+        const inverseRotationMatrix = new THREE.Matrix4().copy(rotationMatrix).invert()
+        
+        // Transform world movement to local space
+        const localMovement = worldMovement.clone().applyMatrix4(inverseRotationMatrix)
+        
+        // In local space, -Z is forward, +Z is backward
+        const isBackward = localMovement.z < 0
+        
+        // Transition to walking if not already
+        if (!isMoving.current) {
+          isMoving.current = true
+          
+          // Only transition if we're not already in walking state
+          if (currentAnimation.current !== 'walking') {
+            idleAction.current.fadeOut(0.2)
+            walkAction.current.reset().fadeIn(0.2).play()
+            currentAnimation.current = 'walking'
+          }
+        }
+        
+        // Update animation direction if it changed
+        if (isMovingBackwards.current !== isBackward) {
+          walkAction.current.timeScale = isBackward ? -1 : 1
+          isMovingBackwards.current = isBackward
+          
+          console.log(`LocalPlayer direction changed: backward=${isBackward}, timescale=${isBackward ? -1 : 1}`)
+        }
+      }
     } else if (isMoving.current) {
       isMoving.current = false
-      walkAction.current.fadeOut(0.2)
-      idleAction.current.reset().fadeIn(0.2).play()
+      
+      // Only transition if we're not already in idle state
+      if (currentAnimation.current !== 'idle') {
+        walkAction.current.fadeOut(0.2)
+        idleAction.current.reset().fadeIn(0.2).play()
+        currentAnimation.current = 'idle'
+      }
+    }
+    
+    // Make sure animations are actually playing
+    const ensureIdleIsPlaying = () => {
+      if (!isMoving.current && !idleAction.current.isRunning()) {
+        // Force restart idle animation if it's stopped unexpectedly
+        idleAction.current.reset().fadeIn(0.2).play()
+        currentAnimation.current = 'idle'
+      }
+    }
+    
+    // Check every 1 second to make sure idle animation is playing when it should be
+    const currentTime = performance.now()
+    if (currentTime % 1000 < 16.7) { // Run check roughly once per second (16.7ms is one frame at 60fps)
+      ensureIdleIsPlaying()
     }
     
     // Update character rotation to match camera yaw
@@ -194,7 +291,6 @@ function Character({ onPositionChange, isConnected, connection }: {
     camera.lookAt(lookAtPosition)
 
     // Update server with position and rotation if enough time has passed and position has changed
-    const currentTime = performance.now()
     const currentRotation = yaw.current + Math.PI
     
     // Check if position or rotation has changed significantly
@@ -222,6 +318,9 @@ function Character({ onPositionChange, isConnected, connection }: {
         };
       }
     }
+    
+    // Update previous position for next frame
+    prevPosition.current.copy(position.current)
   })
 
   return (
@@ -288,7 +387,6 @@ function App() {
       const onInsertCallback = (ctx: moduleBindings.EventContext, player: moduleBindings.Player) => {
         const playerIdentity = getPlayerIdentityString(player);
         console.log("New player joined:", playerIdentity, "position:", player.position);
-        console.log("Event type:", ctx.event.tag);
         
         // Only filter out local player if we have a local identity
         if (!localIdentity || playerIdentity !== localIdentity) {
@@ -307,7 +405,6 @@ function App() {
       const onDeleteCallback = (ctx: moduleBindings.EventContext, player: moduleBindings.Player) => {
         const playerIdentity = getPlayerIdentityString(player);
         console.log("Player left:", playerIdentity);
-        console.log("Event type:", ctx.event.tag);
         setOtherPlayers(prev => {
           const next = new Map(prev);
           next.delete(playerIdentity);
@@ -318,19 +415,18 @@ function App() {
 
       const onUpdateCallback = (ctx: moduleBindings.EventContext, oldPlayer: moduleBindings.Player, newPlayer: moduleBindings.Player) => {
         const playerIdentity = getPlayerIdentityString(newPlayer);
-        console.log("Player updated:", playerIdentity, "position:", newPlayer.position);
-        console.log("Event type:", ctx.event.tag);
+        //console.log("Player updated:", playerIdentity, "position:", newPlayer.position);
         
         // Only filter out local player if we have a local identity
         if (!localIdentity || playerIdentity !== localIdentity) {
-          console.log("Updating other player:", playerIdentity);
+          //console.log("Updating other player:", playerIdentity);
           setOtherPlayers(prev => {
             const next = new Map(prev);
             next.set(playerIdentity, newPlayer);
             return next;
           });
         } else {
-          console.log("Skipped local player update:", playerIdentity);
+          //console.log("Skipped local player update:", playerIdentity);
         }
       };
 
