@@ -36,6 +36,7 @@ export type Player = {
   identity: Identity,
   playerId: number,
   username: string | undefined,
+  hexColor: string | undefined,
   position: __DbVector2,
   rotationYaw: number,
 };
@@ -53,6 +54,7 @@ export namespace Player {
       new ProductTypeElement("identity", AlgebraicType.createIdentityType()),
       new ProductTypeElement("playerId", AlgebraicType.createU32Type()),
       new ProductTypeElement("username", AlgebraicType.createOptionType(AlgebraicType.createStringType())),
+      new ProductTypeElement("hexColor", AlgebraicType.createOptionType(AlgebraicType.createStringType())),
       new ProductTypeElement("position", __DbVector2.getTypeScriptAlgebraicType()),
       new ProductTypeElement("rotationYaw", AlgebraicType.createF32Type()),
     ]);

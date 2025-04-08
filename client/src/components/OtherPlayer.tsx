@@ -5,8 +5,8 @@ import { useRef, useEffect, useMemo, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js'
 
-// Global debug flag - set to true for easier debugging
-const SHOW_DEBUG = true
+// Global debug flag - set to false to disable debug output
+const SHOW_DEBUG = false
 
 // Animation states for better type safety
 enum AnimationState {
@@ -251,17 +251,6 @@ export function OtherPlayer({ player }: OtherPlayerProps) {
   
   return (
     <group ref={groupRef} position={position} rotation={[0, rotation, 0]}>
-      {/* Debug visualization - only shown when debug is enabled */}
-      {SHOW_DEBUG && (
-        <>
-          <mesh position={[0, 2, 0]}>
-            <sphereGeometry args={[0.5, 16, 16]} />
-            <meshStandardMaterial color="red" />
-          </mesh>
-          <axesHelper args={[2]} />
-        </>
-      )}
-      
       {/* Character model with unique key for this player */}
       <CharacterModel 
         playerKey={playerIdentity} 

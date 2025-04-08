@@ -232,7 +232,8 @@ function Character({ onPositionChange, isConnected, connection }: {
           walkAction.current.timeScale = isBackward ? -1 : 1
           isMovingBackwards.current = isBackward
           
-          console.log(`LocalPlayer direction changed: backward=${isBackward}, timescale=${isBackward ? -1 : 1}`)
+          // Debug logging - commented out for production
+          // console.log(`LocalPlayer direction changed: backward=${isBackward}, timescale=${isBackward ? -1 : 1}`)
         }
       }
     } else if (isMoving.current) {
@@ -308,7 +309,8 @@ function Character({ onPositionChange, isConnected, connection }: {
           { x: position.current.x, y: position.current.z }, // DbVector2 for position
           currentRotation // rotation as number
         )
-        console.log("Updated player position to ", position.current, currentRotation);
+        // Debug logging - commented out for production
+        // console.log("Updated player position to ", position.current, currentRotation);
         
         // Update last sent position
         lastSentPosition.current = {
