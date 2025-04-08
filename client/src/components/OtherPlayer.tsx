@@ -1,9 +1,14 @@
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import * as moduleBindings from '../module_bindings/index'
-import { useRef, useEffect, useMemo, useState } from 'react'
+import { useRef, useEffect, useMemo, useState, Suspense } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js'
+
+// Preload models to prevent Suspense fallback
+useGLTF.preload('/models/character/XBot.glb')
+useGLTF.preload('/models/character/animations/Idle.glb')
+useGLTF.preload('/models/character/animations/Walking.glb')
 
 // Global debug flag - set to false to disable debug output
 const SHOW_DEBUG = false
@@ -35,6 +40,14 @@ function CharacterModel({ playerKey, position, rotation, otherPlayer }: {
   const { scene: originalScene } = useGLTF(`/models/character/XBot.glb?player=${playerKey}`)
   const { animations: idleAnimations } = useGLTF(`/models/character/animations/Idle.glb?player=${playerKey}`)
   const { animations: walkAnimations } = useGLTF(`/models/character/animations/Walking.glb?player=${playerKey}`)
+  
+  // Add error handling for animations
+  useEffect(() => {
+    // Simple error handling if any animations are missing
+    if (!originalScene || !idleAnimations || !walkAnimations) {
+      console.error('Error loading models or animations for player', playerKey);
+    }
+  }, [originalScene, idleAnimations, walkAnimations, playerKey]);
   
   // Clone the scene properly with SkeletonUtils to preserve animations and skeleton
   const scene = useMemo(() => SkeletonUtils.clone(originalScene), [originalScene])
@@ -252,12 +265,14 @@ export function OtherPlayer({ player }: OtherPlayerProps) {
   return (
     <group ref={groupRef} position={position} rotation={[0, rotation, 0]}>
       {/* Character model with unique key for this player */}
-      <CharacterModel 
-        playerKey={playerIdentity} 
-        position={position}
-        rotation={rotation}
-        otherPlayer={player}
-      />
+      <Suspense fallback={null}>
+        <CharacterModel 
+          playerKey={playerIdentity} 
+          position={position}
+          rotation={rotation}
+          otherPlayer={player}
+        />
+      </Suspense>
     </group>
   )
 } 
