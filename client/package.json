@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@clockworklabs/spacetimedb-sdk": "^1.0.3",
-    "@react-three/drei": "^10.0.6",
-    "@react-three/fiber": "^9.1.2",
     "@tanstack/react-router": "^1.115.0",
     "@types/three": "^0.175.0",
     "effect": "^3.14.6",

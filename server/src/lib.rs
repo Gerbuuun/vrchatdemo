@@ -33,7 +33,7 @@ pub struct Player{
 
     pub position: DbVector2,
     pub rotation_yaw: f32,
-
+    pub animation_state: Option<String>
 }
 
 #[spacetimedb::reducer(client_connected)]
@@ -71,6 +71,7 @@ pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
             hex_color: Some(color),
             position: DbVector2::new(0.0, 0.0),
             rotation_yaw: 0.0,
+            animation_state: None,
         })?;
     }
     Ok(())
@@ -105,5 +106,18 @@ pub fn update_player_position(ctx: &ReducerContext, position: DbVector2, rotatio
     }
     else{
         log::error!("Player not found");
+    }
+}
+
+#[spacetimedb::reducer]
+pub fn update_player_animation_state(ctx: &ReducerContext, animation_state: String) {
+    if let Some(mut player) = ctx.db.player().identity().find(&ctx.sender) {
+        // Log the value *before* the move
+        log::info!("Updating player animation state to: {}", animation_state);
+        player.animation_state = Some(animation_state); // Move happens here
+        // Update the player in the database
+        ctx.db.player().identity().update(player);
+    } else {
+        log::error!("Player not found for animation update");
     }
 }
