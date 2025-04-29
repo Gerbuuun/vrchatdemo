@@ -15,9 +15,10 @@ export function ConnectionPopup({ onConnect }: ConnectionPopupProps) {
     setError(null);
 
     try {
-      const connection = await moduleBindings.DbConnection.builder()
-        .withUri("wss://maincloud.spacetimedb.com")//.withUri("http://localhost:3000")//.withUri("http://localhost:3000")
-        .withModuleName("vrchatdemo")
+      moduleBindings.DbConnection.builder()
+        .withUri("wss://maincloud.spacetimedb.com")
+        // .withUri("ws://localhost:3000")
+        .withModuleName("vrchatdemo-gerbuuun")
         .onConnect((ctx, identity) => {
           onConnect(ctx, identity.toHexString());
         })

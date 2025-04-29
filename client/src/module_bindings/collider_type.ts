@@ -30,32 +30,36 @@ import {
   Timestamp,
   deepEqual,
 } from "@clockworklabs/spacetimedb-sdk";
+import { DbVector3 as __DbVector3 } from "./db_vector_3_type";
 
-export type UpdatePlayerAnimationState = {
-  animationState: string,
+export type Collider = {
+  id: number,
+  positions: __DbVector3[],
 };
 
 /**
  * A namespace for generated helper functions.
  */
-export namespace UpdatePlayerAnimationState {
+export namespace Collider {
   /**
   * A function which returns this type represented as an AlgebraicType.
   * This function is derived from the AlgebraicType used to generate this type.
   */
   export function getTypeScriptAlgebraicType(): AlgebraicType {
     return AlgebraicType.createProductType([
-      new ProductTypeElement("animationState", AlgebraicType.createStringType()),
+      new ProductTypeElement("id", AlgebraicType.createU32Type()),
+      new ProductTypeElement("positions", AlgebraicType.createArrayType(__DbVector3.getTypeScriptAlgebraicType())),
     ]);
   }
 
-  export function serialize(writer: BinaryWriter, value: UpdatePlayerAnimationState): void {
-    UpdatePlayerAnimationState.getTypeScriptAlgebraicType().serialize(writer, value);
+  export function serialize(writer: BinaryWriter, value: Collider): void {
+    Collider.getTypeScriptAlgebraicType().serialize(writer, value);
   }
 
-  export function deserialize(reader: BinaryReader): UpdatePlayerAnimationState {
-    return UpdatePlayerAnimationState.getTypeScriptAlgebraicType().deserialize(reader);
+  export function deserialize(reader: BinaryReader): Collider {
+    return Collider.getTypeScriptAlgebraicType().deserialize(reader);
   }
 
 }
+
 

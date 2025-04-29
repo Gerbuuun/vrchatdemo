@@ -12,6 +12,7 @@ export interface InputState {
   readonly backward: boolean;
   readonly left: boolean;
   readonly right: boolean;
+  readonly jump: boolean;
   readonly isPointerLocked: boolean;
 }
 
@@ -23,7 +24,7 @@ interface MouseMovement {
 // Type for the callback function to update GameEngine state
 export type InputUpdateCallback = (
     update: |
-    { type: 'key', key: 'forward' | 'backward' | 'left' | 'right', pressed: boolean } |
+    { type: 'key', key: 'forward' | 'backward' | 'left' | 'right' | 'jump', pressed: boolean } |
     { type: 'rotation', deltaX: number, deltaY: number } |
     { type: 'pointerLock', isLocked: boolean }
 ) => void;
@@ -72,6 +73,7 @@ export class InputManager {
             case 's': this.updateCallback({ type: 'key', key: 'backward', pressed: true }); break;
             case 'a': this.updateCallback({ type: 'key', key: 'left', pressed: true }); break;
             case 'd': this.updateCallback({ type: 'key', key: 'right', pressed: true }); break;
+            case ' ': this.updateCallback({ type: 'key', key: 'jump', pressed: true }); break;
         }
     };
 
@@ -82,6 +84,7 @@ export class InputManager {
             case 's': this.updateCallback({ type: 'key', key: 'backward', pressed: false }); break;
             case 'a': this.updateCallback({ type: 'key', key: 'left', pressed: false }); break;
             case 'd': this.updateCallback({ type: 'key', key: 'right', pressed: false }); break;
+            case ' ': this.updateCallback({ type: 'key', key: 'jump', pressed: false }); break;
         }
     };
 

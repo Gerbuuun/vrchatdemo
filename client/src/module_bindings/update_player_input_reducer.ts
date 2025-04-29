@@ -30,49 +30,36 @@ import {
   Timestamp,
   deepEqual,
 } from "@clockworklabs/spacetimedb-sdk";
-import { DbVector3 as __DbVector3 } from "./db_vector_3_type";
+
 import { InputState as __InputState } from "./input_state_type";
 
-export type Player = {
-  identity: Identity,
-  playerId: number,
-  username: string | undefined,
-  hexColor: string | undefined,
-  position: __DbVector3,
-  rotationYaw: number,
-  animationState: string | undefined,
+export type UpdatePlayerInput = {
   input: __InputState,
+  rotation: number,
 };
 
 /**
  * A namespace for generated helper functions.
  */
-export namespace Player {
+export namespace UpdatePlayerInput {
   /**
   * A function which returns this type represented as an AlgebraicType.
   * This function is derived from the AlgebraicType used to generate this type.
   */
   export function getTypeScriptAlgebraicType(): AlgebraicType {
     return AlgebraicType.createProductType([
-      new ProductTypeElement("identity", AlgebraicType.createIdentityType()),
-      new ProductTypeElement("playerId", AlgebraicType.createU32Type()),
-      new ProductTypeElement("username", AlgebraicType.createOptionType(AlgebraicType.createStringType())),
-      new ProductTypeElement("hexColor", AlgebraicType.createOptionType(AlgebraicType.createStringType())),
-      new ProductTypeElement("position", __DbVector3.getTypeScriptAlgebraicType()),
-      new ProductTypeElement("rotationYaw", AlgebraicType.createF32Type()),
-      new ProductTypeElement("animationState", AlgebraicType.createOptionType(AlgebraicType.createStringType())),
       new ProductTypeElement("input", __InputState.getTypeScriptAlgebraicType()),
+      new ProductTypeElement("rotation", AlgebraicType.createF32Type()),
     ]);
   }
 
-  export function serialize(writer: BinaryWriter, value: Player): void {
-    Player.getTypeScriptAlgebraicType().serialize(writer, value);
+  export function serialize(writer: BinaryWriter, value: UpdatePlayerInput): void {
+    UpdatePlayerInput.getTypeScriptAlgebraicType().serialize(writer, value);
   }
 
-  export function deserialize(reader: BinaryReader): Player {
-    return Player.getTypeScriptAlgebraicType().deserialize(reader);
+  export function deserialize(reader: BinaryReader): UpdatePlayerInput {
+    return UpdatePlayerInput.getTypeScriptAlgebraicType().deserialize(reader);
   }
 
 }
-
 

@@ -36,25 +36,42 @@ import { Connect } from "./connect_reducer.ts";
 export { Connect };
 import { Disconnect } from "./disconnect_reducer.ts";
 export { Disconnect };
-import { UpdatePlayerAnimationState } from "./update_player_animation_state_reducer.ts";
-export { UpdatePlayerAnimationState };
-import { UpdatePlayerPosition } from "./update_player_position_reducer.ts";
-export { UpdatePlayerPosition };
+import { Tick } from "./tick_reducer.ts";
+export { Tick };
+import { UpdatePlayerInput } from "./update_player_input_reducer.ts";
+export { UpdatePlayerInput };
+import { UploadBody } from "./upload_body_reducer.ts";
+export { UploadBody };
 
 // Import and reexport all table handle types
+import { ColliderTableHandle } from "./collider_table.ts";
+export { ColliderTableHandle };
 import { LoggedOutPlayerTableHandle } from "./logged_out_player_table.ts";
 export { LoggedOutPlayerTableHandle };
 import { PlayerTableHandle } from "./player_table.ts";
 export { PlayerTableHandle };
+import { TickScheduleTableHandle } from "./tick_schedule_table.ts";
+export { TickScheduleTableHandle };
 
 // Import and reexport all types
-import { DbVector2 } from "./db_vector_2_type.ts";
-export { DbVector2 };
+import { Collider } from "./collider_type.ts";
+export { Collider };
+import { DbVector3 } from "./db_vector_3_type.ts";
+export { DbVector3 };
+import { InputState } from "./input_state_type.ts";
+export { InputState };
 import { Player } from "./player_type.ts";
 export { Player };
+import { TickSchedule } from "./tick_schedule_type.ts";
+export { TickSchedule };
 
 const REMOTE_MODULE = {
   tables: {
+    collider: {
+      tableName: "collider",
+      rowType: Collider.getTypeScriptAlgebraicType(),
+      primaryKey: "id",
+    },
     logged_out_player: {
       tableName: "logged_out_player",
       rowType: Player.getTypeScriptAlgebraicType(),
@@ -64,6 +81,11 @@ const REMOTE_MODULE = {
       tableName: "player",
       rowType: Player.getTypeScriptAlgebraicType(),
       primaryKey: "identity",
+    },
+    tick_schedule: {
+      tableName: "tick_schedule",
+      rowType: TickSchedule.getTypeScriptAlgebraicType(),
+      primaryKey: "scheduleId",
     },
   },
   reducers: {
@@ -75,13 +97,17 @@ const REMOTE_MODULE = {
       reducerName: "disconnect",
       argsType: Disconnect.getTypeScriptAlgebraicType(),
     },
-    update_player_animation_state: {
-      reducerName: "update_player_animation_state",
-      argsType: UpdatePlayerAnimationState.getTypeScriptAlgebraicType(),
+    tick: {
+      reducerName: "tick",
+      argsType: Tick.getTypeScriptAlgebraicType(),
     },
-    update_player_position: {
-      reducerName: "update_player_position",
-      argsType: UpdatePlayerPosition.getTypeScriptAlgebraicType(),
+    update_player_input: {
+      reducerName: "update_player_input",
+      argsType: UpdatePlayerInput.getTypeScriptAlgebraicType(),
+    },
+    upload_body: {
+      reducerName: "upload_body",
+      argsType: UploadBody.getTypeScriptAlgebraicType(),
     },
   },
   // Constructors which are used by the DbConnectionImpl to
@@ -112,8 +138,9 @@ const REMOTE_MODULE = {
 export type Reducer = never
 | { name: "Connect", args: Connect }
 | { name: "Disconnect", args: Disconnect }
-| { name: "UpdatePlayerAnimationState", args: UpdatePlayerAnimationState }
-| { name: "UpdatePlayerPosition", args: UpdatePlayerPosition }
+| { name: "Tick", args: Tick }
+| { name: "UpdatePlayerInput", args: UpdatePlayerInput }
+| { name: "UploadBody", args: UploadBody }
 ;
 
 export class RemoteReducers {
@@ -135,49 +162,70 @@ export class RemoteReducers {
     this.connection.offReducer("disconnect", callback);
   }
 
-  updatePlayerAnimationState(animationState: string) {
-    const __args = { animationState };
+  tick(schedule: TickSchedule) {
+    const __args = { schedule };
     let __writer = new BinaryWriter(1024);
-    UpdatePlayerAnimationState.getTypeScriptAlgebraicType().serialize(__writer, __args);
+    Tick.getTypeScriptAlgebraicType().serialize(__writer, __args);
     let __argsBuffer = __writer.getBuffer();
-    this.connection.callReducer("update_player_animation_state", __argsBuffer, this.setCallReducerFlags.updatePlayerAnimationStateFlags);
+    this.connection.callReducer("tick", __argsBuffer, this.setCallReducerFlags.tickFlags);
   }
 
-  onUpdatePlayerAnimationState(callback: (ctx: ReducerEventContext, animationState: string) => void) {
-    this.connection.onReducer("update_player_animation_state", callback);
+  onTick(callback: (ctx: ReducerEventContext, schedule: TickSchedule) => void) {
+    this.connection.onReducer("tick", callback);
   }
 
-  removeOnUpdatePlayerAnimationState(callback: (ctx: ReducerEventContext, animationState: string) => void) {
-    this.connection.offReducer("update_player_animation_state", callback);
+  removeOnTick(callback: (ctx: ReducerEventContext, schedule: TickSchedule) => void) {
+    this.connection.offReducer("tick", callback);
   }
 
-  updatePlayerPosition(position: DbVector2, rotation: number) {
-    const __args = { position, rotation };
+  updatePlayerInput(input: InputState, rotation: number) {
+    const __args = { input, rotation };
     let __writer = new BinaryWriter(1024);
-    UpdatePlayerPosition.getTypeScriptAlgebraicType().serialize(__writer, __args);
+    UpdatePlayerInput.getTypeScriptAlgebraicType().serialize(__writer, __args);
     let __argsBuffer = __writer.getBuffer();
-    this.connection.callReducer("update_player_position", __argsBuffer, this.setCallReducerFlags.updatePlayerPositionFlags);
+    this.connection.callReducer("update_player_input", __argsBuffer, this.setCallReducerFlags.updatePlayerInputFlags);
   }
 
-  onUpdatePlayerPosition(callback: (ctx: ReducerEventContext, position: DbVector2, rotation: number) => void) {
-    this.connection.onReducer("update_player_position", callback);
+  onUpdatePlayerInput(callback: (ctx: ReducerEventContext, input: InputState, rotation: number) => void) {
+    this.connection.onReducer("update_player_input", callback);
   }
 
-  removeOnUpdatePlayerPosition(callback: (ctx: ReducerEventContext, position: DbVector2, rotation: number) => void) {
-    this.connection.offReducer("update_player_position", callback);
+  removeOnUpdatePlayerInput(callback: (ctx: ReducerEventContext, input: InputState, rotation: number) => void) {
+    this.connection.offReducer("update_player_input", callback);
+  }
+
+  uploadBody(points: DbVector3[]) {
+    const __args = { points };
+    let __writer = new BinaryWriter(1024);
+    UploadBody.getTypeScriptAlgebraicType().serialize(__writer, __args);
+    let __argsBuffer = __writer.getBuffer();
+    this.connection.callReducer("upload_body", __argsBuffer, this.setCallReducerFlags.uploadBodyFlags);
+  }
+
+  onUploadBody(callback: (ctx: ReducerEventContext, points: DbVector3[]) => void) {
+    this.connection.onReducer("upload_body", callback);
+  }
+
+  removeOnUploadBody(callback: (ctx: ReducerEventContext, points: DbVector3[]) => void) {
+    this.connection.offReducer("upload_body", callback);
   }
 
 }
 
 export class SetReducerFlags {
-  updatePlayerAnimationStateFlags: CallReducerFlags = 'FullUpdate';
-  updatePlayerAnimationState(flags: CallReducerFlags) {
-    this.updatePlayerAnimationStateFlags = flags;
+  tickFlags: CallReducerFlags = 'FullUpdate';
+  tick(flags: CallReducerFlags) {
+    this.tickFlags = flags;
   }
 
-  updatePlayerPositionFlags: CallReducerFlags = 'FullUpdate';
-  updatePlayerPosition(flags: CallReducerFlags) {
-    this.updatePlayerPositionFlags = flags;
+  updatePlayerInputFlags: CallReducerFlags = 'FullUpdate';
+  updatePlayerInput(flags: CallReducerFlags) {
+    this.updatePlayerInputFlags = flags;
+  }
+
+  uploadBodyFlags: CallReducerFlags = 'FullUpdate';
+  uploadBody(flags: CallReducerFlags) {
+    this.uploadBodyFlags = flags;
   }
 
 }
@@ -185,12 +233,20 @@ export class SetReducerFlags {
 export class RemoteTables {
   constructor(private connection: DbConnectionImpl) {}
 
+  get collider(): ColliderTableHandle {
+    return new ColliderTableHandle(this.connection.clientCache.getOrCreateTable<Collider>(REMOTE_MODULE.tables.collider));
+  }
+
   get loggedOutPlayer(): LoggedOutPlayerTableHandle {
     return new LoggedOutPlayerTableHandle(this.connection.clientCache.getOrCreateTable<Player>(REMOTE_MODULE.tables.logged_out_player));
   }
 
   get player(): PlayerTableHandle {
     return new PlayerTableHandle(this.connection.clientCache.getOrCreateTable<Player>(REMOTE_MODULE.tables.player));
+  }
+
+  get tickSchedule(): TickScheduleTableHandle {
+    return new TickScheduleTableHandle(this.connection.clientCache.getOrCreateTable<TickSchedule>(REMOTE_MODULE.tables.tick_schedule));
   }
 }
 

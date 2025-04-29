@@ -2,12 +2,10 @@
 import * as THREE from 'three';
 import * as moduleBindings from './module_bindings/index';
 import { InputManager, InputState, InputUpdateCallback, MOUSE_SENSITIVITY, PITCH_LIMIT_LOW, PITCH_LIMIT_HIGH } from './InputManager';
-import { SceneManager, AnimationName, LocalPlayerRenderData, RemotePlayerRenderData, ServerAnimationState } from './SceneManager';
+import { SceneManager, AnimationName, LocalPlayerRenderData, RemotePlayerRenderData, AnimationState } from './SceneManager';
 
 // --- Constants ---
-const MOVEMENT_SPEED = 3.0; // Units per second
 const UPDATE_INTERVAL = 1000 / 30; // 30 times per second (ms)
-const POSITION_THRESHOLD = 0.01; // Min distance change to send update
 const ROTATION_THRESHOLD = 0.01; // Min rotation change to send update
 
 // --- Immutable Game State Definition ---
@@ -17,15 +15,14 @@ interface LocalPlayerState {
   readonly rotationY: number;
   readonly pitch: number;
   readonly input: InputState;
-  readonly isMoving: boolean;
-  readonly currentAnimationName: AnimationName;
-  readonly isMovingBackwards: boolean;
+  readonly animationState: AnimationState;
   readonly hexColor?: string; // Player's hex color from database
 }
 
 interface GameState {
   readonly localPlayer: LocalPlayerState | null;
   readonly players: ReadonlyMap<string, moduleBindings.Player>;
+  readonly collisionMeshes: ReadonlyMap<number, moduleBindings.Collider>;
 }
 
 // Update player rotation based on mouse movement
@@ -42,60 +39,6 @@ function updatePlayerRotation(player: LocalPlayerState, deltaX: number, deltaY: 
         ...player,
         rotationY: newRotationY,
         pitch: newPitch,
-    };
-}
-
-// Calculate next player state based on current input and delta time
-function calculateNextPlayerState(player: LocalPlayerState, deltaTime: number): LocalPlayerState {
-    const { input, position, rotationY } = player;
-    const moveDirection = new THREE.Vector3();
-    const speed = MOVEMENT_SPEED * deltaTime;
-
-    // Calculate forward/right vectors based on current yaw
-    const forwardVector = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
-    const rightVector = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
-
-    // Accumulate movement direction
-    if (input.forward) moveDirection.add(forwardVector);
-    if (input.backward) moveDirection.sub(forwardVector);
-    if (input.left) moveDirection.sub(rightVector);
-    if (input.right) moveDirection.add(rightVector);
-
-    const isMoving = moveDirection.lengthSq() > 0.00001; // Use a small threshold
-    let newPosition = position; // Keep old position if not moving
-    let isLocallyMovingBackwards = false; // Calculate locally, don't store in state
-
-    if (isMoving) {
-      moveDirection.normalize().multiplyScalar(speed);
-      newPosition = position.clone().add(moveDirection); // Create new Vector3
-
-      // Calculate backward movement based on local frame
-      const worldMovement = newPosition.clone().sub(position);
-      // Check only if there's significant world movement to avoid floating point issues
-      if (worldMovement.lengthSq() > 0.00001) {
-         // Project world movement onto the player's forward direction vector
-         // Forward vector in world space (opposite of model's facing direction due to +PI rotation)
-         const forwardWorld = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationY);
-         const dotProduct = worldMovement.normalize().dot(forwardWorld.normalize());
-         // If the dot product is significantly negative, we are moving backwards relative to facing direction
-         isLocallyMovingBackwards = dotProduct < -0.5; // Threshold for backward movement
-       }
-    }
-
-    // Determine desired animation type (idle or walk)
-    const nextAnimationName: AnimationName = isMoving ? 'walk' : 'idle';
-
-    // Only return new object if something actually changed
-     if (newPosition === position && isMoving === player.isMoving && nextAnimationName === player.currentAnimationName && isLocallyMovingBackwards === player.isMovingBackwards) {
-         return player;
-     }
-
-    return {
-        ...player,
-        position: newPosition,
-        isMoving: isMoving,
-        currentAnimationName: nextAnimationName,
-        isMovingBackwards: isMoving && isLocallyMovingBackwards,
     };
 }
 
@@ -139,12 +82,13 @@ function updateRemotePlayersMap(
 
 // --- Initial State ---
 const initialInputState: InputState = {
-    forward: false, backward: false, left: false, right: false, isPointerLocked: false
+    forward: false, backward: false, left: false, right: false, jump: false, isPointerLocked: false
 };
 
 const initialGameState: GameState = {
   localPlayer: null,
   players: new Map(),
+  collisionMeshes: new Map(),
 };
 
 export class GameEngine {
@@ -161,8 +105,7 @@ export class GameEngine {
   // Connection related
   private connection: moduleBindings.DbConnection | null = null;
   private lastUpdateTime: number = 0; // For throttling server updates
-  private lastSentPosition: { x: number; y: number; rotation: number };
-  private lastSentAnimationState: ServerAnimationState | null = null;
+  private lastSentInput: InputState & { rotation: number };
   private dbCallbacks: { onInsert: any, onDelete: any, onUpdate: any } | null = null;
 
   private isDisposed: boolean = false;
@@ -174,7 +117,7 @@ export class GameEngine {
 
     // Basic State Init (Immutable)
     this.state = initialGameState;
-    this.lastSentPosition = { x: 0, y: 0, rotation: 0 };
+    this.lastSentInput = { ...initialInputState, rotation: 0 };
 
     // Initialize Input Manager
     this.inputManager = new InputManager(this.canvasContainer, this.handleInputUpdate.bind(this));
@@ -200,6 +143,12 @@ export class GameEngine {
   private handleDebugToggleKey = (e: KeyboardEvent) => {
     if (e.key.toLowerCase() === 'p') {
       this.toggleDebugMode();
+    }
+    if (e.key.toLowerCase() === '[') {
+      this.sceneManager.setNextVisibleCollisionMesh();
+    }
+    if (e.key.toLowerCase() === ']') {
+      this.sceneManager.setPreviousVisibleCollisionMesh();
     }
   };
 
@@ -256,15 +205,6 @@ export class GameEngine {
     
     // 1a. Apply pending mouse movement (handled by InputManager, triggers callback)
     this.inputManager.applyPendingMouseMovement();
-    
-    // 1b. Then calculate next player state based on current input state
-    if (this.state.localPlayer) {
-      const updatedPlayer = calculateNextPlayerState(this.state.localPlayer, deltaTime);
-      // Only update state if the player actually changed
-      if (updatedPlayer !== this.state.localPlayer) {
-          this.state = { ...this.state, localPlayer: updatedPlayer };
-      }
-    }
 
     // 2. Now log state changes (comparing against the copy made before any updates)
     if (this.isDebugActive) {
@@ -303,7 +243,7 @@ export class GameEngine {
         identity: id,
         position: player.position,
         rotationYaw: player.rotationYaw,
-        animationState: player.animationState as string,
+        animationState: player.animationState as AnimationState,
         hexColor: player.hexColor
       });
     });
@@ -319,8 +259,7 @@ export class GameEngine {
       position: player.position,
       rotationY: player.rotationY,
       pitch: player.pitch,
-      currentAnimationName: player.currentAnimationName,
-      isMovingBackwards: player.isMovingBackwards,
+      animationState: player.animationState,
       hexColor: player.hexColor || "#3498db" // Use player's color or fallback to blue
     };
   }
@@ -335,7 +274,7 @@ export class GameEngine {
         identity: id,
         position: player.position,
         rotationYaw: player.rotationYaw,
-        animationState: player.animationState as string
+        animationState: player.animationState as AnimationState
       });
     });
     
@@ -350,7 +289,8 @@ export class GameEngine {
         ...state.localPlayer,
         position: state.localPlayer.position.clone(),
         input: { ...state.localPlayer.input },
-      } : null
+      } : null,
+      collisionMeshes: new Map(state.collisionMeshes),
     };
     return result;
   }
@@ -378,44 +318,22 @@ export class GameEngine {
     if (!this.connection || !this.state.localPlayer) return;
 
     const now = performance.now();
-    const { position, rotationY, currentAnimationName, isMovingBackwards } = this.state.localPlayer;
+    const { input, rotationY } = this.state.localPlayer;
     const currentRotation = rotationY + Math.PI; // Server expects rotation relative to +Z
 
-    // Determine the animation state string to send to the server
-    let serverAnimationState: ServerAnimationState;
-    if (currentAnimationName === 'idle') {
-        serverAnimationState = 'idle';
-    } else { // currentAnimationName === 'walk'
-        serverAnimationState = isMovingBackwards ? 'walkingBackwards' : 'walkingForwards';
-    }
-
     // Check thresholds against last *sent* data
-    const positionChanged = Math.abs(position.x - this.lastSentPosition.x) > POSITION_THRESHOLD ||
-                           Math.abs(position.z - this.lastSentPosition.y) > POSITION_THRESHOLD; // Use Z for Y coord
-    const rotationChanged = Math.abs(currentRotation - this.lastSentPosition.rotation) > ROTATION_THRESHOLD;
-    const animationChanged = serverAnimationState !== this.lastSentAnimationState;
+    const { rotation, ...lastSentInput } = this.lastSentInput;
+    const inputChanged = JSON.stringify(input) !== JSON.stringify(lastSentInput);
+    const rotationChanged = Math.abs(currentRotation - rotation) > ROTATION_THRESHOLD;
 
     // Send position/rotation update if interval passed AND values changed
-    if (now - this.lastUpdateTime >= UPDATE_INTERVAL && (positionChanged || rotationChanged)) {
+    if (now - this.lastUpdateTime >= UPDATE_INTERVAL && (inputChanged || rotationChanged)) {
         try {
-            this.connection.reducers.updatePlayerPosition(
-              { x: position.x, y: position.z },
-              currentRotation
-            );
-            this.lastSentPosition = { x: position.x, y: position.z, rotation: currentRotation };
+            this.connection.reducers.updatePlayerInput(input, currentRotation);
+            this.lastSentInput = { ...input, rotation: currentRotation };
             this.lastUpdateTime = now;
         } catch (error) {
             console.error("Failed to send player position update:", error);
-        }
-    }
-
-    // Send animation update if it changed (no time throttle needed)
-    if (animationChanged && this.connection) {
-        try {
-            this.connection.reducers.updatePlayerAnimationState(serverAnimationState);
-            this.lastSentAnimationState = serverAnimationState;
-        } catch (error) {
-            console.error("Failed to send player animation state update:", error);
         }
     }
   }
@@ -428,7 +346,6 @@ export class GameEngine {
     const initialRotationY = 0; // Facing positive Z initially (model faces -Z)
     const initialPitch = Math.PI / 2; // Look straight ahead
     const initialAnimation: AnimationName = 'idle';
-    const isInitiallyMovingBackwards = false;
 
     // Initialize immutable state for the new connection
     this.state = {
@@ -439,37 +356,26 @@ export class GameEngine {
         rotationY: initialRotationY,
         pitch: initialPitch,
         input: initialInputState,
-        isMoving: false,
-        currentAnimationName: initialAnimation,
-        isMovingBackwards: isInitiallyMovingBackwards,
+        animationState: initialAnimation,
       },
+      collisionMeshes: new Map(),
     };
 
     // Calculate initial values to send to the server
     const initialServerRotation = initialRotationY + Math.PI; // Server expects rotation relative to +Z
-    const initialServerAnimState: ServerAnimationState = initialAnimation !== 'idle'
-        ? (isInitiallyMovingBackwards ? 'walkingBackwards' : 'walkingForwards')
-        : 'idle';
 
     // Send initial state immediately
     if (this.connection && this.state.localPlayer) {
       try {
-        this.connection.reducers.updatePlayerPosition(
-          { x: initialPosition.x, y: initialPosition.z },
-          initialServerRotation
-        );
-        this.lastSentPosition = { x: initialPosition.x, y: initialPosition.z, rotation: initialServerRotation };
-
-        this.connection.reducers.updatePlayerAnimationState(initialServerAnimState);
-        this.lastSentAnimationState = initialServerAnimState;
+        this.connection.reducers.updatePlayerInput(initialInputState, initialServerRotation);
+        this.lastSentInput = { ...initialInputState, rotation: initialServerRotation };
 
         this.lastUpdateTime = performance.now();
       } catch (error) {
         console.error("Failed to send initial player state on connect:", error);
       }
     } else {
-        this.lastSentPosition = { x: initialPosition.x, y: initialPosition.z, rotation: initialServerRotation };
-        this.lastSentAnimationState = initialServerAnimState;
+        this.lastSentInput = { ...initialInputState, rotation: initialServerRotation };
         this.lastUpdateTime = 0;
     }
 
@@ -552,16 +458,16 @@ export class GameEngine {
 
         // If this update is for the local player, update the color
         if (playerId === localPlayerIdentity && this.state.localPlayer) {
-          if (newPlayer.hexColor !== oldPlayer.hexColor) {
-            this.state = {
-              ...this.state,
-              localPlayer: {
-                ...this.state.localPlayer,
-                hexColor: newPlayer.hexColor
-              }
-            };
-            this.updateSceneFromState(this.state);
-          }
+          this.state = {
+            ...this.state,
+            localPlayer: {
+              ...this.state.localPlayer,
+              hexColor: newPlayer.hexColor,
+              position: new THREE.Vector3(newPlayer.position.x, newPlayer.position.y, newPlayer.position.z),
+              animationState: newPlayer.animationState as AnimationState,
+            }
+          };
+          this.updateSceneFromState(this.state);
         }
 
         // Update the remote player state
@@ -585,6 +491,13 @@ export class GameEngine {
              return;
         }
 
+        // Load collision meshes
+        const initialColliders = Array.from(ctx.db.collider.iter());
+        console.log(`Initial colliders: ${initialColliders.length}`);
+        const meshes: THREE.Vector3[][] = [];
+        initialColliders.forEach(collider => meshes.push(collider.positions.map(v => new THREE.Vector3(v.x, v.y, v.z))));
+        this.sceneManager.setCollisionMeshes(meshes);
+
         const initialPlayers = Array.from(ctx.db.player.iter());
 
         // Look for the local player in initial data to get their color
@@ -602,7 +515,8 @@ export class GameEngine {
         // Update state with initial players
         this.state = {
             ...this.state,
-            players: updateRemotePlayersMap(this.state.players, { type: 'initial', data: initialPlayers, localId: localPlayerIdentity })
+            players: updateRemotePlayersMap(this.state.players, { type: 'initial', data: initialPlayers, localId: localPlayerIdentity }),
+            collisionMeshes: new Map(initialColliders.map(c => [c.id, c])),
         };
 
         // Register dynamic listeners AFTER processing initial state

@@ -30,36 +30,36 @@ import {
   Timestamp,
   deepEqual,
 } from "@clockworklabs/spacetimedb-sdk";
-
-import { DbVector2 as __DbVector2 } from "./db_vector_2_type";
-
-export type UpdatePlayerPosition = {
-  position: __DbVector2,
-  rotation: number,
+export type DbVector3 = {
+  x: number,
+  y: number,
+  z: number,
 };
 
 /**
  * A namespace for generated helper functions.
  */
-export namespace UpdatePlayerPosition {
+export namespace DbVector3 {
   /**
   * A function which returns this type represented as an AlgebraicType.
   * This function is derived from the AlgebraicType used to generate this type.
   */
   export function getTypeScriptAlgebraicType(): AlgebraicType {
     return AlgebraicType.createProductType([
-      new ProductTypeElement("position", __DbVector2.getTypeScriptAlgebraicType()),
-      new ProductTypeElement("rotation", AlgebraicType.createF32Type()),
+      new ProductTypeElement("x", AlgebraicType.createF32Type()),
+      new ProductTypeElement("y", AlgebraicType.createF32Type()),
+      new ProductTypeElement("z", AlgebraicType.createF32Type()),
     ]);
   }
 
-  export function serialize(writer: BinaryWriter, value: UpdatePlayerPosition): void {
-    UpdatePlayerPosition.getTypeScriptAlgebraicType().serialize(writer, value);
+  export function serialize(writer: BinaryWriter, value: DbVector3): void {
+    DbVector3.getTypeScriptAlgebraicType().serialize(writer, value);
   }
 
-  export function deserialize(reader: BinaryReader): UpdatePlayerPosition {
-    return UpdatePlayerPosition.getTypeScriptAlgebraicType().deserialize(reader);
+  export function deserialize(reader: BinaryReader): DbVector3 {
+    return DbVector3.getTypeScriptAlgebraicType().deserialize(reader);
   }
 
 }
+
 

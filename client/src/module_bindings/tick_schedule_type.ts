@@ -30,32 +30,32 @@ import {
   Timestamp,
   deepEqual,
 } from "@clockworklabs/spacetimedb-sdk";
-export type DbVector2 = {
-  x: number,
-  y: number,
+export type TickSchedule = {
+  scheduleId: bigint,
+  scheduledAt: { tag: "Interval", value: TimeDuration } | { tag: "Time", value: Timestamp },
 };
 
 /**
  * A namespace for generated helper functions.
  */
-export namespace DbVector2 {
+export namespace TickSchedule {
   /**
   * A function which returns this type represented as an AlgebraicType.
   * This function is derived from the AlgebraicType used to generate this type.
   */
   export function getTypeScriptAlgebraicType(): AlgebraicType {
     return AlgebraicType.createProductType([
-      new ProductTypeElement("x", AlgebraicType.createF32Type()),
-      new ProductTypeElement("y", AlgebraicType.createF32Type()),
+      new ProductTypeElement("scheduleId", AlgebraicType.createU64Type()),
+      new ProductTypeElement("scheduledAt", AlgebraicType.createScheduleAtType()),
     ]);
   }
 
-  export function serialize(writer: BinaryWriter, value: DbVector2): void {
-    DbVector2.getTypeScriptAlgebraicType().serialize(writer, value);
+  export function serialize(writer: BinaryWriter, value: TickSchedule): void {
+    TickSchedule.getTypeScriptAlgebraicType().serialize(writer, value);
   }
 
-  export function deserialize(reader: BinaryReader): DbVector2 {
-    return DbVector2.getTypeScriptAlgebraicType().deserialize(reader);
+  export function deserialize(reader: BinaryReader): TickSchedule {
+    return TickSchedule.getTypeScriptAlgebraicType().deserialize(reader);
   }
 
 }

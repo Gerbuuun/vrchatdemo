@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { ConvexGeometry } from 'three/examples/jsm/Addons.js';
 import * as moduleBindings from './module_bindings/index';
 
 // Animation-related constants
@@ -9,10 +10,8 @@ const CAMERA_DISTANCE = 2; // Distance behind the character
 const CAMERA_HEIGHT = 1; // Height above the character
 
 // --- Type Definitions ---
-// Client-side animation state: Only idle or walking
 export type AnimationName = 'idle' | 'walk';
-// Server-side/Network animation state: Includes direction
-export type ServerAnimationState = 'idle' | 'walkingForwards' | 'walkingBackwards';
+export type AnimationState = 'idle' | 'walkingForwards' | 'walkingBackwards';
 
 // Represents the mutable Three.js components associated with a player model
 export interface PlayerRenderComponent {
@@ -32,17 +31,16 @@ export interface LocalPlayerRenderData {
     readonly position: THREE.Vector3;
     readonly rotationY: number;
     readonly pitch: number;
-    readonly currentAnimationName: AnimationName;
-    readonly isMovingBackwards: boolean;
+    readonly animationState: AnimationState;
     readonly hexColor?: string; // Optional hex color for player customization
 }
 
 // Interface for remote player state data needed for rendering
 export interface RemotePlayerRenderData {
     readonly identity: string;
-    readonly position: { readonly x: number, readonly y: number }; // From server, y is z in 3D space
+    readonly position: { readonly x: number, readonly y: number, readonly z: number };
     readonly rotationYaw: number;
-    readonly animationState: string; // Server animation state
+    readonly animationState: AnimationState; // Server animation state
     readonly hexColor?: string; // Optional hex color for player customization
 }
 
@@ -71,6 +69,8 @@ export class SceneManager {
     private axesHelper: THREE.AxesHelper | null = null;
     private debugInfoElement: HTMLDivElement | null = null;
     private isDebugActive: boolean = false;
+    private collisionMeshes: THREE.Group | null = null;
+    private currentCollisionMeshIndex: number | null = null;
     
     // State tracking
     private isDisposed: boolean = false;
@@ -176,7 +176,7 @@ export class SceneManager {
         this.scene.add(directionalLight);
             
         // Add a grid to help with orientation
-        this.gridHelper = new THREE.GridHelper(20, 20, 0xff0000, 0xffffff);
+        this.gridHelper = new THREE.GridHelper(50, 50, 0xff0000, 0xffffff);
         this.gridHelper.visible = false;
         this.scene.add(this.gridHelper);
         
@@ -208,7 +208,7 @@ export class SceneManager {
         if (localPlayer) {
             const pos = localPlayer.position;
             debugText += `Local: X:${pos.x.toFixed(2)}, Y:${pos.y.toFixed(2)}, Z:${pos.z.toFixed(2)} `;
-            debugText += `(Animation: ${localPlayer.currentAnimationName}, Backwards: ${localPlayer.isMovingBackwards})`;
+            debugText += `(Animation: ${localPlayer.animationState})`;
         } else {
             debugText += 'Local: N/A';
         }
@@ -350,6 +350,62 @@ export class SceneManager {
         arrow.name = "debug_marker_arrow";
         arrow.visible = this.isDebugActive;
         model.add(arrow);
+
+        const capsuleGeometry = new THREE.CapsuleGeometry(0.3, 1.2);
+        const capsuleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.3, transparent: true });
+        const capsule = new THREE.Mesh(capsuleGeometry, capsuleMaterial);
+        capsule.position.set(0, 0.9, 0);
+        capsule.name = "debug_marker_capsule";
+        capsule.visible = this.isDebugActive;
+        model.add(capsule);
+    }
+
+    public setNextVisibleCollisionMesh(): void {
+        if (this.currentCollisionMeshIndex === null) {
+            this.currentCollisionMeshIndex = 0;
+        }
+
+        if (this.currentCollisionMeshIndex < (this.collisionMeshes?.children.length ?? 0) - 1) {
+            this.currentCollisionMeshIndex++;
+        } else if (this.collisionMeshes) {
+            this.currentCollisionMeshIndex = 0;
+        }
+        this.collisionMeshes?.children.forEach((child, i) => {
+            child.visible = i === this.currentCollisionMeshIndex;
+        });
+    }
+
+    public setPreviousVisibleCollisionMesh(): void {
+        if (this.currentCollisionMeshIndex === null) {
+            this.currentCollisionMeshIndex = 0;
+        }
+
+        if (this.currentCollisionMeshIndex > 0) {
+            this.currentCollisionMeshIndex--;
+        } else if (this.collisionMeshes) {
+            this.currentCollisionMeshIndex = this.collisionMeshes.children.length - 1;
+        }
+        this.collisionMeshes?.children.forEach((child, i) => {
+            child.visible = i === this.currentCollisionMeshIndex;
+        });
+    }
+
+    // Render collision meshes
+    public setCollisionMeshes(meshes: THREE.Vector3[][]): void {
+        if (this.collisionMeshes) {
+            this.collisionMeshes.clear();
+        } else {
+            this.collisionMeshes = new THREE.Group();
+            this.scene.add(this.collisionMeshes);
+        }
+
+        for (const points of meshes) {
+            const geometry = new ConvexGeometry(points);
+            const material = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+            const mesh = new THREE.Mesh(geometry, material);
+            this.collisionMeshes.visible = this.isDebugActive;
+            this.collisionMeshes.add(mesh);
+        }
     }
     
     // Toggle debug visualization mode
@@ -357,6 +413,10 @@ export class SceneManager {
         if (this.isDebugActive === isActive) return;
         
         this.isDebugActive = isActive;
+        this.currentCollisionMeshIndex = null;
+        this.collisionMeshes?.children.forEach(child => {
+            child.visible = true;
+        });
         
         // Toggle scene helpers
         if (this.gridHelper) {
@@ -379,16 +439,23 @@ export class SceneManager {
                 this.debugInfoElement.textContent = '';
             }
         }
+
+        // Toggle collision meshes
+        if (this.collisionMeshes) {
+            this.collisionMeshes.visible = isActive;
+        }
     }
     
     private toggleDebugMarkersOnModel(model: THREE.Group | null, isLocal: boolean): void {
         if (!model) return;
         const markerName = "debug_marker_arrow";
         const marker = model.getObjectByName(markerName);
+        const capsule = model.getObjectByName("debug_marker_capsule");
         const label = isLocal ? "Local" : `Remote ${model.name}`;
 
-        if (marker) {
+        if (marker && capsule) {
             marker.visible = this.isDebugActive;
+            capsule.visible = this.isDebugActive;
         } else if (this.isDebugActive) {
             this.addDebugMarkersToModel(model);
         }
@@ -421,14 +488,11 @@ export class SceneManager {
                 this.scene.add(this.localPlayerRenderComponent.model);
                 
                 // Set initial client animation state in component
-                this.localPlayerRenderComponent.currentAnimation = playerData.currentAnimationName;
-                
-                // Set initial time scale based on initial direction
-                if (playerData.currentAnimationName === 'walk') {
-                    this.localPlayerRenderComponent.actions.walk.timeScale = playerData.isMovingBackwards ? -1 : 1;
-                } else {
-                    this.localPlayerRenderComponent.actions.walk.timeScale = 1; // Default for idle
-                }
+                const animationName: AnimationName = playerData.animationState === 'idle' ? 'idle' : 'walk';
+                const timeScale = playerData.animationState === 'walkingBackwards' ? -1 : 1;
+
+                this.localPlayerRenderComponent.currentAnimation = animationName;
+                this.localPlayerRenderComponent.actions.walk.timeScale = timeScale;
                 
                 // Apply color to local player model if available
                 if (playerData.hexColor) {
@@ -445,17 +509,19 @@ export class SceneManager {
             // Update position and rotation
             model.position.copy(playerData.position);
             model.rotation.y = playerData.rotationY + Math.PI;
+
+            const animationName: AnimationName = playerData.animationState === 'idle' ? 'idle' : 'walk';
             
             // Animation Update: Switch if the animation type changed
-            if (rc.currentAnimation !== playerData.currentAnimationName) {
-                this.switchAnimation(rc, rc.currentAnimation, playerData.currentAnimationName);
+            if (rc.currentAnimation !== animationName) {
+                this.switchAnimation(rc, rc.currentAnimation, animationName);
                 // Update the component's current animation type *after* switching
-                rc.currentAnimation = playerData.currentAnimationName;
+                rc.currentAnimation = animationName;
             }
             
             // Always update timescale based on current state if walking
-            if (playerData.currentAnimationName === 'walk') {
-                const targetTimeScale = playerData.isMovingBackwards ? -1 : 1;
+            if (playerData.animationState === 'walkingBackwards') {
+                const targetTimeScale = -1;
                 if (rc.actions.walk.timeScale !== targetTimeScale) {
                     rc.actions.walk.timeScale = targetTimeScale;
                 }
@@ -488,7 +554,7 @@ export class SceneManager {
         // Process each player in the update
         players.forEach((playerData, playerId) => {
             existingIds.delete(playerId); // Remove from the set as we process it
-            let renderComponent = this.playerRenderComponents.get(playerId);
+            const renderComponent = this.playerRenderComponents.get(playerId);
             
             // Create new component if doesn't exist
             if (!renderComponent && this.areRenderAssetsReady()) {
@@ -502,7 +568,7 @@ export class SceneManager {
                 const newComponent = this.createPlayerRenderComponent(model);
                 if (newComponent !== null) {
                     // Determine client state and timescale from server state
-                    const serverAnimState = playerData.animationState as ServerAnimationState || 'idle';
+                    const serverAnimState = playerData.animationState || 'idle';
                     const clientAnimState: AnimationName = (serverAnimState === 'idle') ? 'idle' : 'walk';
                     const targetTimeScale = (serverAnimState === 'walkingBackwards') ? -1 : 1;
 
@@ -525,7 +591,7 @@ export class SceneManager {
             // Update existing component
             if (renderComponent) {
                 // Update position and rotation
-                const targetPos = new THREE.Vector3(playerData.position.x, 0, playerData.position.y);
+                const targetPos = new THREE.Vector3(playerData.position.x, playerData.position.y, playerData.position.z);
                 if (!renderComponent.model.position.equals(targetPos)) {
                     renderComponent.model.position.copy(targetPos);
                 }
@@ -536,7 +602,7 @@ export class SceneManager {
                 }
                 
                 // Update animation state
-                const serverAnimState = (playerData.animationState as ServerAnimationState) || 'idle';
+                const serverAnimState = playerData.animationState || 'idle';
                 const desiredClientAnim: AnimationName = (serverAnimState === 'idle') ? 'idle' : 'walk';
                 const targetTimeScale = (serverAnimState === 'walkingBackwards') ? -1 : 1;
 
@@ -684,8 +750,10 @@ export class SceneManager {
         // Dispose models and assets
         this.disposeModel(this.stadiumModel);
         this.disposeModel(this.characterModelTemplate);
+        this.disposeModel(this.collisionMeshes);
         this.stadiumModel = null;
         this.characterModelTemplate = null;
+        this.collisionMeshes = null;
         
         // Dispose debug helpers
         this.gridHelper?.geometry?.dispose();
