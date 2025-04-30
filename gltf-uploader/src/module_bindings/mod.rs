@@ -46,9 +46,17 @@ pub use upload_body_reducer::{set_flags_for_upload_body, upload_body, UploadBody
 pub enum Reducer {
     Connect,
     Disconnect,
-    Tick { schedule: TickSchedule },
-    UpdatePlayerInput { input: InputState, rotation: f32 },
-    UploadBody { points: Vec<DbVector3> },
+    Tick {
+        schedule: TickSchedule,
+    },
+    UpdatePlayerInput {
+        input: InputState,
+        rotation: f32,
+    },
+    UploadBody {
+        points: Vec<DbVector3>,
+        name: String,
+    },
 }
 
 impl __sdk::InModule for Reducer {

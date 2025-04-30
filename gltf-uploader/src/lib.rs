@@ -4,6 +4,7 @@ mod scene;
 use module_bindings::*;
 use spacetimedb_sdk::*;
 
+// const HOST: &str = "wss://maincloud.spacetimedb.com";
 const HOST: &str = "ws://localhost:3000";
 const MODULE_NAME: &str = "vrchatdemo-gerbuuun";
 
@@ -39,15 +40,18 @@ fn on_disconnect(_ctx: &ErrorContext, err: Option<Error>) {
 
 fn main() {
     let ctx = connect_to_db();
-    ctx.reducers.on_upload_body(|_ctx, _points| {
-        println!("Uploaded body with {} points", _points.len());
+    ctx.reducers.on_upload_body(|_ctx, _points, _name| {
+        println!("Uploaded {} with {} points", _name, _points.len());
     });
 
     ctx.run_threaded();
 
     let mut count = 0;
-    for point_array in scene::load_scene("/Users/gerbuuun/Development/github.com/Gerbuuun/vrchatdemo/client/public/models/low_poly_stadium/scene.gltf") {
-        ctx.reducers.upload_body(point_array.iter().map(|p| DbVector3 { x: p.x, y: p.y, z: p.z }).collect()).expect("Failed to upload body");
+    for (point_array, name) in scene::load_scene("/Users/gerbuuun/Development/github.com/Gerbuuun/vrchatdemo/client/public/models/low_poly_stadium/scene.gltf") {
+        ctx.reducers.upload_body(
+            point_array.iter().map(|p| DbVector3 { x: p.x, y: p.y, z: p.z }).collect(),
+            name,
+        ).expect("Failed to upload body");
 
         count += 1;
     }

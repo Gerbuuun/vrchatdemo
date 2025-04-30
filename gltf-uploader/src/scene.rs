@@ -89,20 +89,11 @@ fn points_from_mesh(
     let mut indices = Vec::new();
     let mut vertex_offset = 0;
 
-    println!(
-        "Placing mesh {:?} at {:?}",
-        mesh.name().unwrap_or("unnamed"),
-        transform,
-    );
-
     for primitive in mesh.primitives() {
         if let Some((ps, is)) = read_primitive(vertex_offset, &primitive, buffers) {
             let transformed_points = ps
                 .into_iter()
-                .map(|p| {
-                    let transformed = transform.transform_point(&p);
-                    Point::new(transformed.x, transformed.y, transformed.z)
-                })
+                .map(|p| transform.transform_point(&p))
                 .collect::<Vec<_>>();
 
             positions.extend(transformed_points);
@@ -118,30 +109,37 @@ fn place_colliders<'a>(
     node: &gltf::scene::Node<'a>,
     buffers: &[gltf::buffer::Data],
     transform: &Transform3<f32>,
-) -> Vec<(Vec<Point<f32>>, Vec<[u32; 3]>)> {
-    let mut shapes = Vec::<(Vec<Point<f32>>, Vec<[u32; 3]>)>::new();
-    let node_transform =
-        Transform3::from_matrix_unchecked(nalgebra::Matrix4::from(node.transform().matrix()));
-    let combined_transform = node_transform * transform;
+) -> Vec<(Vec<Point<f32>>, Vec<[u32; 3]>, String)> {
+    let mut shapes = Vec::<(Vec<Point<f32>>, Vec<[u32; 3]>, String)>::new();
+
+    let node_matrix = nalgebra::Matrix4::from(node.transform().matrix());
+    let node_transform = Transform3::from_matrix_unchecked(node_matrix);
+    let combined_transform = transform * node_transform;
 
     for child in node.children() {
         let children = place_colliders(&child, buffers, &combined_transform);
-        println!(
-            "Placing colliders for child {:?} with {} nodes",
-            child.name().unwrap_or("unnamed"),
-            children.len()
-        );
         shapes.extend(children);
     }
 
     if let Some(mesh) = node.mesh() {
-        shapes.push(points_from_mesh(&mesh, buffers, &combined_transform));
+        let (positions, indices) = points_from_mesh(&mesh, buffers, &combined_transform);
+        shapes.push((
+            positions,
+            indices,
+            node.name().unwrap_or("unnamed").to_string(),
+        ));
     }
+
+    println!(
+        "Node: {:?}, {:?}",
+        node.name().unwrap_or("unnamed"),
+        shapes.len()
+    );
 
     shapes
 }
 
-pub fn load_scene(path: &str) -> Vec<Vec<Point<f32>>> {
+pub fn load_scene(path: &str) -> Vec<(Vec<Point<f32>>, String)> {
     if let Ok(gltf) = Gltf::open(path) {
         let scenes = gltf.scenes().collect::<Vec<_>>();
 
@@ -165,8 +163,8 @@ pub fn load_scene(path: &str) -> Vec<Vec<Point<f32>>> {
         }
 
         colliders
-            .iter()
-            .map(|(positions, _)| parry::transformation::convex_hull(&positions).0)
+            .into_iter()
+            .map(|(positions, _, name)| (parry::transformation::convex_hull(&positions).0, name))
             .collect::<Vec<_>>()
     } else {
         log::error!("Failed to load scene from {}", path);

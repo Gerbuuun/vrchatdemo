@@ -35,6 +35,7 @@ import { DbVector3 as __DbVector3 } from "./db_vector_3_type";
 export type Collider = {
   id: number,
   positions: __DbVector3[],
+  name: string,
 };
 
 /**
@@ -49,6 +50,7 @@ export namespace Collider {
     return AlgebraicType.createProductType([
       new ProductTypeElement("id", AlgebraicType.createU32Type()),
       new ProductTypeElement("positions", AlgebraicType.createArrayType(__DbVector3.getTypeScriptAlgebraicType())),
+      new ProductTypeElement("name", AlgebraicType.createStringType()),
     ]);
   }
 

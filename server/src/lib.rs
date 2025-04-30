@@ -30,10 +30,7 @@ fn init(ctx: &ReducerContext) {
 #[spacetimedb::reducer]
 fn tick(ctx: &ReducerContext, _schedule: TickSchedule) -> Result<(), String> {
     if ctx.sender != ctx.identity() {
-        log::error!(
-            "Player {} is not authorized to calculate next player state",
-            ctx.sender
-        );
+        log::error!("Player {} is not authorized to tick", ctx.sender);
         return Ok(());
     }
 

@@ -213,6 +213,9 @@ export class SceneManager {
             debugText += 'Local: N/A';
         }
 
+        debugText += `\nCollision Meshes: ${this.collisionMeshes?.children.length}`;
+        debugText += `\nCurrent Collision Mesh: ${this.currentCollisionMeshIndex == null ? 'All' : this.collisionMeshes?.children[this.currentCollisionMeshIndex].name}`;
+
         remotePlayers.forEach((player, id) => {
             // Use player.position.x for X and player.position.y for Z from the DB record
             debugText += `\nRemote ${id.substring(0, 6)}: X:${player.position.x.toFixed(2)}, Z:${player.position.y.toFixed(2)}`;
@@ -391,7 +394,7 @@ export class SceneManager {
     }
 
     // Render collision meshes
-    public setCollisionMeshes(meshes: THREE.Vector3[][]): void {
+    public setCollisionMeshes(meshes: {points: THREE.Vector3[], name: string}[]): void {
         if (this.collisionMeshes) {
             this.collisionMeshes.clear();
         } else {
@@ -399,10 +402,11 @@ export class SceneManager {
             this.scene.add(this.collisionMeshes);
         }
 
-        for (const points of meshes) {
+        for (const {points, name} of meshes) {
             const geometry = new ConvexGeometry(points);
             const material = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
             const mesh = new THREE.Mesh(geometry, material);
+            mesh.name = name;
             this.collisionMeshes.visible = this.isDebugActive;
             this.collisionMeshes.add(mesh);
         }

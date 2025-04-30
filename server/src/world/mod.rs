@@ -14,10 +14,15 @@ pub struct Collider {
     pub id: u32,
 
     pub positions: Vec<DbVector3>,
+    pub name: String,
 }
 
 #[spacetimedb::reducer]
-pub fn upload_body(ctx: &ReducerContext, points: Vec<DbVector3>) -> Result<(), String> {
+pub fn upload_body(
+    ctx: &ReducerContext,
+    points: Vec<DbVector3>,
+    name: String,
+) -> Result<(), String> {
     log::info!("Uploading body with {} points", points.len());
 
     let collision_group = InteractionGroups::new(Group::GROUP_1, Group::ALL ^ Group::GROUP_1);
@@ -34,6 +39,7 @@ pub fn upload_body(ctx: &ReducerContext, points: Vec<DbVector3>) -> Result<(), S
             .iter()
             .map(|p| DbVector3::new(p.x, p.y, p.z))
             .collect(),
+        name,
     })?;
 
     let ch = convex_hull(&positions);

@@ -38,7 +38,7 @@ impl Player {
             player_id: 0,
             username: None,
             hex_color: Some(color),
-            position: DbVector3::new(0.0, 200.0, 0.0),
+            position: DbVector3::new(0.0, 0.0, 0.0),
             rotation_yaw: 0.0,
             animation_state: None,
             input: InputState::new(),

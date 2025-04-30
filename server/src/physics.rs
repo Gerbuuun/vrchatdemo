@@ -41,7 +41,7 @@ impl Physics {
         Self {
             physics_pipeline: PhysicsPipeline::new(),
             players: HashMap::new(),
-            gravity: Vector3::new(0.0, -10.0, 0.0),
+            gravity: Vector3::new(0.0, -20.0, 0.0),
             integration_parameters: IntegrationParameters::default(),
             island_manager: IslandManager::new(),
             broad_phase: DefaultBroadPhase::new(),
@@ -85,11 +85,13 @@ impl Physics {
     pub fn add_player(&mut self, player: &Player) {
         let rigid_body = RigidBodyBuilder::dynamic()
             .position(player.position())
-            .translation(Vector3::new(0.0, 0.9, 0.0))
             .lock_rotations()
             .ccd_enabled(true)
             .build();
-        let collider = ColliderBuilder::capsule_y(0.6, 0.3).build();
+        let collider = ColliderBuilder::capsule_y(0.6, 0.3)
+            .translation(Vector3::new(0.0, 0.9, 0.0))
+            .collision_groups(*PLAYER_COLLISION_GROUP)
+            .build();
         let rigid_body_handle = self.rigid_body_set.insert(rigid_body);
         self.collider_set
             .insert_with_parent(collider, rigid_body_handle, &mut self.rigid_body_set);
@@ -130,13 +132,14 @@ impl Physics {
 
             transform *= MOVEMENT_SPEED;
             transform = player.position().rotation.transform_vector(&transform);
+            // Very simple jump implementation
             transform.y = if input.jump && rigid_body.linvel().y.abs() <= 0.0001 {
                 5.0
             } else {
                 rigid_body.linvel().y
             };
 
-            rigid_body.set_linvel(transform, false);
+            rigid_body.set_linvel(transform, true);
 
             Some(rigid_body)
         } else {
