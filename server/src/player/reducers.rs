@@ -68,7 +68,6 @@ pub fn update_player_input(ctx: &ReducerContext, input: InputState, rotation: f3
         player.input = input;
         player.rotation_yaw = rotation;
         ctx.db.player().identity().update(player);
-        log::info!("Updated player input {:?}", input);
     } else {
         log::error!("Player not found");
     }
