@@ -1,3 +1,5 @@
+pub mod utils;
+
 use crate::Player;
 use nalgebra::Vector3;
 use rapier3d::prelude::*;
@@ -132,8 +134,7 @@ impl Physics {
 
             transform *= MOVEMENT_SPEED;
             transform = player.position().rotation.transform_vector(&transform);
-            // Very simple jump implementation
-            transform.y = if input.jump && rigid_body.linvel().y.abs() <= 0.0001 {
+            transform.y = if input.jump && utils::is_on_ground(&self.narrow_phase, rigid_body) {
                 5.0
             } else {
                 rigid_body.linvel().y

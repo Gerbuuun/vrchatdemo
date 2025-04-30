@@ -1,7 +1,7 @@
-pub mod math;
+mod math;
 pub mod physics;
-mod player;
-mod world;
+pub mod player;
+pub mod world;
 
 use physics::PHYSICS;
 use player::{player as db_player, Player};

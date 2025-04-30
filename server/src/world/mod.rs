@@ -1,9 +1,6 @@
 use crate::math::DbVector3;
-use crate::physics::PHYSICS;
-use rapier3d::{
-    parry::transformation::convex_hull,
-    prelude::{ColliderBuilder, Group, InteractionGroups},
-};
+use crate::physics::{PHYSICS, SCENE_COLLISION_GROUP};
+use rapier3d::{parry::transformation::convex_hull, prelude::ColliderBuilder};
 use spacetimedb::{ReducerContext, Table};
 
 #[spacetimedb::table(name = collider, public)]
@@ -25,7 +22,6 @@ pub fn upload_body(
 ) -> Result<(), String> {
     log::info!("Uploading body with {} points", points.len());
 
-    let collision_group = InteractionGroups::new(Group::GROUP_1, Group::ALL ^ Group::GROUP_1);
     let mut physics = PHYSICS.lock().expect("Failed to lock physics");
 
     let mut positions = Vec::new();
@@ -46,7 +42,7 @@ pub fn upload_body(
 
     if let Some(builder) = ColliderBuilder::convex_hull(&ch.0) {
         log::info!("Adding collider with {} points", ch.0.len());
-        physics.add_collider(builder.collision_groups(collision_group).build());
+        physics.add_collider(builder.collision_groups(*SCENE_COLLISION_GROUP).build());
     }
 
     Ok(())
