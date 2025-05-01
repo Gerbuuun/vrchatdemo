@@ -115,7 +115,7 @@ export class SceneManager {
         this.onAssetsLoadedCallback = onAssetsLoaded;
         
         // Load Stadium
-        this.loader.load('/models/low_poly_stadium/scene.gltf', (gltf) => {
+        this.loader.load('/models/forest_scene/scene.glb', (gltf) => {
             if (this.isDisposed) return;
             this.stadiumModel = gltf.scene;
             this.stadiumModel.scale.set(4, 4, 4);
@@ -394,7 +394,7 @@ export class SceneManager {
     }
 
     // Render collision meshes
-    public setCollisionMeshes(meshes: {points: THREE.Vector3[], name: string}[]): void {
+    public setCollisionMeshes(meshes: {points: THREE.Vector3[], indices: THREE.Vector3[], name: string}[]): void {
         if (this.collisionMeshes) {
             this.collisionMeshes.clear();
         } else {
@@ -402,8 +402,10 @@ export class SceneManager {
             this.scene.add(this.collisionMeshes);
         }
 
-        for (const {points, name} of meshes) {
-            const geometry = new ConvexGeometry(points);
+        for (const {points, indices, name} of meshes) {
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(points.flatMap(p => [p.x, p.y, p.z])), 3));
+            geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices.flatMap(i => [i.x, i.y, i.z])), 3));
             const material = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
             const mesh = new THREE.Mesh(geometry, material);
             mesh.name = name;

@@ -1,6 +1,8 @@
-use gltf::Gltf;
 use nalgebra::Transform3;
-use rapier3d::{parry, prelude::*};
+use rapier3d::{
+    parry::{self, transformation::vhacd::VHACDParameters},
+    prelude::*,
+};
 
 // Read the primitive data from the gltf file and return the positions and indices.
 fn read_primitive(
@@ -131,7 +133,7 @@ fn place_colliders<'a>(
     }
 
     println!(
-        "Node: {:?}, {:?}",
+        "Node: {:?}, children: {:?}",
         node.name().unwrap_or("unnamed"),
         shapes.len()
     );
@@ -140,16 +142,8 @@ fn place_colliders<'a>(
 }
 
 pub fn load_scene(path: &str) -> Vec<(Vec<Point<f32>>, String)> {
-    if let Ok(gltf) = Gltf::open(path) {
-        let scenes = gltf.scenes().collect::<Vec<_>>();
-
-        let base_path = std::path::Path::new(path)
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."));
-
-        // Only import buffers. We don't need images.
-        let buffers = gltf::import_buffers(&gltf.document, Some(base_path), None)
-            .expect("Failed to import buffers");
+    if let Ok((document, buffers, _)) = gltf::import(path) {
+        let scenes = document.scenes().collect::<Vec<_>>();
 
         let mut colliders = Vec::new();
         let scale = Transform3::from_matrix_unchecked(nalgebra::Matrix4::new_scaling(4.0));
@@ -162,10 +156,73 @@ pub fn load_scene(path: &str) -> Vec<(Vec<Point<f32>>, String)> {
             }
         }
 
+        let mut bodies = Vec::new();
+
+        // Decompose the colliders into convex hulls using VHACD.
+        for (positions, indices, name) in colliders {
+            let trimesh = rapier3d::parry::shape::TriMesh::new(positions.clone(), indices.clone())
+                .expect("Failed to create trimesh");
+
+            let components = trimesh
+                .connected_component_meshes(TriMeshFlags::default())
+                .expect("Could not get mesh");
+
+            let mut params = VHACDParameters::default();
+            params.resolution = 256;
+            params.concavity = 0.0001;
+
+            for component in components {
+                let mesh = component.expect("Could not get mesh");
+                let positions = mesh.vertices();
+                let indices = mesh.indices();
+
+                println!("Decomposing {} with {} indices", name, indices.len());
+
+                let start_time = std::time::Instant::now();
+
+                let decomposition = parry::transformation::vhacd::VHACD::decompose(
+                    &params, &positions, &indices, true,
+                );
+
+                println!("VHACD decomposition took {:?}", start_time.elapsed());
+
+                let start_time = std::time::Instant::now();
+
+                // Use compute_convex_hulls instead of compute_exact_convex_hulls for better performance
+                let convex_hulls = decomposition.compute_convex_hulls(1);
+
+                println!("Convex hull computation took {:?}", start_time.elapsed());
+
+                bodies.extend(
+                    convex_hulls
+                        .into_iter()
+                        .map(|(hull_points, _)| (hull_points, name.clone())),
+                );
+            }
+        }
+
+        bodies
+    } else {
+        log::error!("Failed to load scene from {}", path);
+        Vec::new()
+    }
+}
+
+pub fn load_scene_mesh(path: &str) -> Vec<(Vec<Point<f32>>, Vec<[u32; 3]>, String)> {
+    if let Ok((document, buffers, _)) = gltf::import(path) {
+        let scenes = document.scenes().collect::<Vec<_>>();
+
+        let mut colliders = Vec::new();
+        let scale = Transform3::from_matrix_unchecked(nalgebra::Matrix4::new_scaling(4.0));
+
+        for scene in scenes {
+            for node in scene.nodes() {
+                let node_colliders = place_colliders(&node, &buffers, &scale);
+                colliders.extend(node_colliders);
+            }
+        }
+
         colliders
-            .into_iter()
-            .map(|(positions, _, name)| (parry::transformation::convex_hull(&positions).0, name))
-            .collect::<Vec<_>>()
     } else {
         log::error!("Failed to load scene from {}", path);
         Vec::new()

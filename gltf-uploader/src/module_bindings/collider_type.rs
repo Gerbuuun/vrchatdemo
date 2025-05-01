@@ -11,6 +11,7 @@ use super::db_vector_3_type::DbVector3;
 pub struct Collider {
     pub id: u32,
     pub positions: Vec<DbVector3>,
+    pub indices: Vec<DbVector3>,
     pub name: String,
 }
 

@@ -10,6 +10,7 @@ use super::db_vector_3_type::DbVector3;
 #[sats(crate = __lib)]
 pub(super) struct UploadBodyArgs {
     pub points: Vec<DbVector3>,
+    pub indices: Vec<DbVector3>,
     pub name: String,
 }
 
@@ -17,6 +18,7 @@ impl From<UploadBodyArgs> for super::Reducer {
     fn from(args: UploadBodyArgs) -> Self {
         Self::UploadBody {
             points: args.points,
+            indices: args.indices,
             name: args.name,
         }
     }
@@ -38,7 +40,12 @@ pub trait upload_body {
     /// This method returns immediately, and errors only if we are unable to send the request.
     /// The reducer will run asynchronously in the future,
     ///  and its status can be observed by listening for [`Self::on_upload_body`] callbacks.
-    fn upload_body(&self, points: Vec<DbVector3>, name: String) -> __sdk::Result<()>;
+    fn upload_body(
+        &self,
+        points: Vec<DbVector3>,
+        indices: Vec<DbVector3>,
+        name: String,
+    ) -> __sdk::Result<()>;
     /// Register a callback to run whenever we are notified of an invocation of the reducer `upload_body`.
     ///
     /// Callbacks should inspect the [`__sdk::ReducerEvent`] contained in the [`super::ReducerEventContext`]
@@ -48,7 +55,9 @@ pub trait upload_body {
     /// to cancel the callback.
     fn on_upload_body(
         &self,
-        callback: impl FnMut(&super::ReducerEventContext, &Vec<DbVector3>, &String) + Send + 'static,
+        callback: impl FnMut(&super::ReducerEventContext, &Vec<DbVector3>, &Vec<DbVector3>, &String)
+            + Send
+            + 'static,
     ) -> UploadBodyCallbackId;
     /// Cancel a callback previously registered by [`Self::on_upload_body`],
     /// causing it not to run in the future.
@@ -56,13 +65,26 @@ pub trait upload_body {
 }
 
 impl upload_body for super::RemoteReducers {
-    fn upload_body(&self, points: Vec<DbVector3>, name: String) -> __sdk::Result<()> {
-        self.imp
-            .call_reducer("upload_body", UploadBodyArgs { points, name })
+    fn upload_body(
+        &self,
+        points: Vec<DbVector3>,
+        indices: Vec<DbVector3>,
+        name: String,
+    ) -> __sdk::Result<()> {
+        self.imp.call_reducer(
+            "upload_body",
+            UploadBodyArgs {
+                points,
+                indices,
+                name,
+            },
+        )
     }
     fn on_upload_body(
         &self,
-        mut callback: impl FnMut(&super::ReducerEventContext, &Vec<DbVector3>, &String) + Send + 'static,
+        mut callback: impl FnMut(&super::ReducerEventContext, &Vec<DbVector3>, &Vec<DbVector3>, &String)
+            + Send
+            + 'static,
     ) -> UploadBodyCallbackId {
         UploadBodyCallbackId(self.imp.on_reducer(
             "upload_body",
@@ -70,7 +92,12 @@ impl upload_body for super::RemoteReducers {
                 let super::ReducerEventContext {
                     event:
                         __sdk::ReducerEvent {
-                            reducer: super::Reducer::UploadBody { points, name },
+                            reducer:
+                                super::Reducer::UploadBody {
+                                    points,
+                                    indices,
+                                    name,
+                                },
                             ..
                         },
                     ..
@@ -78,7 +105,7 @@ impl upload_body for super::RemoteReducers {
                 else {
                     unreachable!()
                 };
-                callback(ctx, points, name)
+                callback(ctx, points, indices, name)
             }),
         ))
     }

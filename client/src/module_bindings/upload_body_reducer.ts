@@ -35,6 +35,7 @@ import { DbVector3 as __DbVector3 } from "./db_vector_3_type";
 
 export type UploadBody = {
   points: __DbVector3[],
+  indices: __DbVector3[],
   name: string,
 };
 
@@ -49,6 +50,7 @@ export namespace UploadBody {
   export function getTypeScriptAlgebraicType(): AlgebraicType {
     return AlgebraicType.createProductType([
       new ProductTypeElement("points", AlgebraicType.createArrayType(__DbVector3.getTypeScriptAlgebraicType())),
+      new ProductTypeElement("indices", AlgebraicType.createArrayType(__DbVector3.getTypeScriptAlgebraicType())),
       new ProductTypeElement("name", AlgebraicType.createStringType()),
     ]);
   }

@@ -494,8 +494,12 @@ export class GameEngine {
         // Load collision meshes
         const initialColliders = Array.from(ctx.db.collider.iter());
         console.log(`Initial colliders: ${initialColliders.length}`);
-        const meshes: {points: THREE.Vector3[], name: string}[] = [];
-        initialColliders.forEach(collider => meshes.push({points: collider.positions.map(v => new THREE.Vector3(v.x, v.y, v.z)), name: collider.name}));
+        const meshes: {points: THREE.Vector3[], indices: THREE.Vector3[], name: string}[] = [];
+        initialColliders.forEach(collider => meshes.push({
+          points: collider.positions.map(v => new THREE.Vector3(v.x, v.y, v.z)),
+          indices: collider.indices.map(v => new THREE.Vector3(v.x, v.y, v.z)),
+          name: collider.name,
+        }));
         this.sceneManager.setCollisionMeshes(meshes);
 
         const initialPlayers = Array.from(ctx.db.player.iter());

@@ -4,9 +4,10 @@ mod scene;
 use module_bindings::*;
 use spacetimedb_sdk::*;
 
-// const HOST: &str = "wss://maincloud.spacetimedb.com";
-const HOST: &str = "ws://localhost:3000";
+const HOST: &str = "wss://maincloud.spacetimedb.com";
+// const HOST: &str = "ws://localhost:3000";
 const MODULE_NAME: &str = "vrchatdemo-gerbuuun";
+const SCENE_PATH: &str = "/Users/gerbuuun/Development/github.com/Gerbuuun/vrchatdemo/client/public/models/forest_scene/scene.glb";
 
 fn connect_to_db() -> DbConnection {
     DbConnection::builder()
@@ -38,20 +39,38 @@ fn on_disconnect(_ctx: &ErrorContext, err: Option<Error>) {
     }
 }
 
-fn main() {
+pub fn main() {
     let ctx = connect_to_db();
-    ctx.reducers.on_upload_body(|_ctx, _points, _name| {
-        println!("Uploaded {} with {} points", _name, _points.len());
-    });
+    ctx.reducers
+        .on_upload_body(|_ctx, _points, _indices, _name| {
+            println!("Uploaded {} with {} points", _name, _points.len());
+        });
 
     ctx.run_threaded();
 
     let mut count = 0;
-    for (point_array, name) in scene::load_scene("/Users/gerbuuun/Development/github.com/Gerbuuun/vrchatdemo/client/public/models/low_poly_stadium/scene.gltf") {
-        ctx.reducers.upload_body(
-            point_array.iter().map(|p| DbVector3 { x: p.x, y: p.y, z: p.z }).collect(),
-            name,
-        ).expect("Failed to upload body");
+    for (point_array, indices, name) in scene::load_scene_mesh(SCENE_PATH) {
+        ctx.reducers
+            .upload_body(
+                point_array
+                    .iter()
+                    .map(|p| DbVector3 {
+                        x: p.x,
+                        y: p.y,
+                        z: p.z,
+                    })
+                    .collect(),
+                indices
+                    .iter()
+                    .map(|i| DbVector3 {
+                        x: i[0] as f32,
+                        y: i[1] as f32,
+                        z: i[2] as f32,
+                    })
+                    .collect(),
+                name,
+            )
+            .expect("Failed to upload body");
 
         count += 1;
     }

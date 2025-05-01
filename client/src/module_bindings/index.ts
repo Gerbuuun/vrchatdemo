@@ -194,19 +194,19 @@ export class RemoteReducers {
     this.connection.offReducer("update_player_input", callback);
   }
 
-  uploadBody(points: DbVector3[], name: string) {
-    const __args = { points, name };
+  uploadBody(points: DbVector3[], indices: DbVector3[], name: string) {
+    const __args = { points, indices, name };
     let __writer = new BinaryWriter(1024);
     UploadBody.getTypeScriptAlgebraicType().serialize(__writer, __args);
     let __argsBuffer = __writer.getBuffer();
     this.connection.callReducer("upload_body", __argsBuffer, this.setCallReducerFlags.uploadBodyFlags);
   }
 
-  onUploadBody(callback: (ctx: ReducerEventContext, points: DbVector3[], name: string) => void) {
+  onUploadBody(callback: (ctx: ReducerEventContext, points: DbVector3[], indices: DbVector3[], name: string) => void) {
     this.connection.onReducer("upload_body", callback);
   }
 
-  removeOnUploadBody(callback: (ctx: ReducerEventContext, points: DbVector3[], name: string) => void) {
+  removeOnUploadBody(callback: (ctx: ReducerEventContext, points: DbVector3[], indices: DbVector3[], name: string) => void) {
     this.connection.offReducer("upload_body", callback);
   }
 

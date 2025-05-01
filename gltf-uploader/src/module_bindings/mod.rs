@@ -55,6 +55,7 @@ pub enum Reducer {
     },
     UploadBody {
         points: Vec<DbVector3>,
+        indices: Vec<DbVector3>,
         name: String,
     },
 }
